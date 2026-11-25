@@ -49,11 +49,13 @@ export function search(notes: Note[], query: string, limit = 8): Hit[] {
   for (const note of notes) {
     const offset = note.raw.split("\n").length - note.body.split("\n").length;
     let heading: string | undefined;
-    note.body.split("\n").forEach((text, i) => {
+    // Blank out <!-- comments --> (template hints) but keep line numbers.
+    const body = note.body.replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, ""));
+    body.split("\n").forEach((text, i) => {
       const h = text.match(/^#{1,6}\s+(.*)/);
       if (h) heading = h[1].trim();
       const trimmed = text.trim();
-      if (!trimmed || /^<!--|-->$/.test(trimmed)) return;
+      if (!trimmed) return;
       // File name counts as context for every line, so "music" finds Interests/music.md lines.
       const tokens = tokenize(`${trimmed} ${note.name.replace(/[-_]/g, " ")} ${heading ?? ""}`);
       if (tokens.length) docs.push({ file: note.rel, heading, line: offset + i + 1, text: trimmed, tokens });
@@ -78,6 +80,8 @@ export function search(notes: Note[], query: string, limit = 8): Hit[] {
       const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5));
       score += (idf * tf * (k1 + 1)) / (tf + k1 * (1 - b + (b * d.tokens.length) / avg));
     }
+    // Hub lines only point at a leaf; prefer the leaf's own lines.
+    if (/\[\[/.test(d.text)) score *= 0.6;
     if (score > 0) hits.push({ file: d.file, heading: d.heading, line: d.line, text: d.text, score: Math.round(score * 100) / 100 });
   }
   return hits.sort((a, b) => b.score - a.score).slice(0, limit);

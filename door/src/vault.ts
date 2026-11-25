@@ -3,25 +3,14 @@
 import { promises as fs, realpathSync } from "node:fs";
 import path from "node:path";
 
-export type Privacy = "open" | "personal" | "private";
-export const PRIVACY_ORDER: Privacy[] = ["open", "personal", "private"];
-
-export function parsePrivacy(value: string | undefined, fallback: Privacy): Privacy {
-  const v = (value ?? "").trim().toLowerCase();
-  return (PRIVACY_ORDER as string[]).includes(v) ? (v as Privacy) : fallback;
-}
-
-export function allowed(level: Privacy, ceiling: Privacy): boolean {
-  return PRIVACY_ORDER.indexOf(level) <= PRIVACY_ORDER.indexOf(ceiling);
-}
-
 export interface Note {
   rel: string; // path relative to the vault, with forward slashes
   name: string; // file name without .md, used by [[links]]
   frontmatter: Record<string, string>;
   body: string; // content without frontmatter
   raw: string;
-  privacy: Privacy;
+  /** Locked notes are never returned, searched or edited by the door. */
+  locked: boolean;
   mtimeMs: number;
 }
 
@@ -55,7 +44,6 @@ export function today(now = new Date()): string {
 
 export class Vault {
   readonly root: string;
-  readonly defaultPrivacy: Privacy = "personal";
 
   constructor(root: string) {
     this.root = realpathSync(path.resolve(root));
@@ -75,7 +63,7 @@ export class Vault {
     const out: Note[] = [];
     const walk = async (dir: string) => {
       for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-        if (entry.name.startsWith(".")) continue; // .obsidian, .lifegraph, .git
+        if (entry.name.startsWith(".") || entry.name === "mailbox") continue; // .obsidian, .lifegraph, .git; mailbox is traffic, not memory
         const abs = path.join(dir, entry.name);
         if (entry.isDirectory()) await walk(abs);
         else if (entry.isFile() && entry.name.endsWith(".md")) out.push(await this.readAbs(abs));
@@ -89,16 +77,15 @@ export class Vault {
     const [raw, stat] = await Promise.all([fs.readFile(abs, "utf8"), fs.stat(abs)]);
     const { frontmatter, body } = splitFrontmatter(raw);
     const rel = path.relative(this.root, abs).split(path.sep).join("/");
-    // index.md and hubs default to open; everything else to personal.
     const name = path.basename(abs, ".md");
-    const isHub = name === "index" || path.basename(path.dirname(abs)) === name;
+    const lock = (frontmatter.locked ?? "").toLowerCase();
     return {
       rel,
       name,
       frontmatter,
       body,
       raw,
-      privacy: parsePrivacy(frontmatter.privacy, isHub ? "open" : this.defaultPrivacy),
+      locked: lock === "true" || lock === "yes" || (frontmatter.privacy ?? "").toLowerCase() === "private",
       mtimeMs: stat.mtimeMs,
     };
   }

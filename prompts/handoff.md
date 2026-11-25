@@ -1,4 +1,4 @@
-# Hand a task to another model
+# Hand a task to another AI
 
 Say this in the chat you want to hand off:
 

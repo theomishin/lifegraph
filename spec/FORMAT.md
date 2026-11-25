@@ -1,4 +1,4 @@
-# The LifeGraph format (v0.1)
+# The LifeGraph format (v0.2)
 
 A LifeGraph is a folder of Markdown files that any person or program can read and write. This spec is CC0, so any tool may implement it.
 
@@ -10,8 +10,9 @@ index.md            root: one line per branch, plus "Rules for AI assistants"
 <Branch>/<leaf>.md     a leaf: the current state of one subject
 inbox/inbox.md      lines waiting to be filed
 inbox/phone.md      lines appended from the phone (append-only on the phone)
-handoff/<card>.md   task cards passed between models
-.lifegraph/         tool state and indexes; safe to delete, never synced to git
+handoff/<name>.md   handoff notes passed between AIs
+mailbox/            ask-*.md / reply-*.md files for apps that can only use files
+.lifegraph/         the door's bookkeeping (who last looked, who is editing what); safe to delete
 ```
 
 - Links use Obsidian's double-bracket form, `[[leaf-name]]`, resolved by file name anywhere in the folder.
@@ -24,20 +25,17 @@ Every file may start with YAML frontmatter:
 
 ```yaml
 ---
-updated: 2026-11-24          # last real change, ISO date
-privacy: open | personal | private
+updated: 2026-11-24        # last real change, ISO date
+updated_by: Claude         # which AI (or person) made it
+locked: true               # optional: the door never shows, searches or edits this note
 ---
 ```
 
-- `open`: fine to share with any assistant.
-- `personal`: about you; fine for assistants you have connected.
-- `private`: stays on your machine unless you explicitly allow an app to see it.
-
-Missing `privacy` means `personal`. Tools must never show a file above an app's privacy ceiling.
+`privacy: private`, from v0.1, is read as `locked: true`.
 
 ## Lines
 
-- A fact is one list line. A dated fact starts with the date: `- 2026-11-24: Started a new job at ...`.
+- A fact is one list line. A dated fact starts with the date and ends with who wrote it: `- 2026-11-24: Started a new job at ... (via Claude)`.
 - Leaves keep the current state. A tool that learns a fact has changed replaces the old line rather than adding a second one. History lives in git if you want it.
 
 ## Inbox and phone
@@ -45,6 +43,12 @@ Missing `privacy` means `personal`. Tools must never show a file above an app's 
 - `inbox/phone.md` is appended to only by the phone, one line per note: `- 2026-11-24 09:41: text`.
 - The computer's assistant files each line into a leaf and then removes exactly the lines it filed. Sync tools (iCloud Drive and others) may leave conflict copies such as `phone 2.md`; tools treat any `inbox/phone*.md` as part of the phone inbox.
 
-## Handoff cards
+## Handoff notes and claims
 
-A card in `handoff/` has the sections Goal, Done so far, Next step, Open questions, From, Status (`open` or `done`).
+A handoff note in `handoff/` has the sections Goal, Done so far, Next step, Open questions, Notes it touches, From, Status (`open` or `done`).
+
+An AI rewriting a note over several steps claims it for 30 minutes. While it is claimed, other AIs' changes to that note go to `inbox/inbox.md` tagged `[for <path>]`, so two AIs never edit one note at once.
+
+## Mailbox
+
+An app that can only use files writes `mailbox/ask-<app>.md`: a `from: <app>` line, then a plain question or commands (`open:`, `search:`, `remember:`, `inbox`, `handoff`). The door answers in `mailbox/reply-<app>.md` and deletes the ask. The mailbox folder is traffic, not memory: it is never searched.

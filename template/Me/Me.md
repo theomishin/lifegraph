@@ -1,6 +1,5 @@
 ---
 updated: 2026-11-24
-privacy: personal
 ---
 # Me
 Back to [[index]].

@@ -1,6 +1,5 @@
 ---
 updated: 2026-11-24
-privacy: open
 ---
 # Work
 Back to [[index]].

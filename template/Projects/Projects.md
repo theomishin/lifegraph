@@ -1,6 +1,5 @@
 ---
 updated: 2026-11-24
-privacy: open
 ---
 # Projects
 Back to [[index]].

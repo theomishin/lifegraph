@@ -1,4 +1,4 @@
-// The LifeGraph MCP server. Speaks MCP over stdio only: no ports, no network.
+// The door: LifeGraph's MCP server. Speaks MCP over stdio only: no ports, no network.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -12,6 +12,10 @@ const DEFAULT_RULES = `- Call lg_start at the start of every chat, then open onl
 - Leaves hold the current state: replace a stale line (lg_remember with replaces) instead of adding a second one.
 - Only write what the user said or decided. No guesses, no advice.`;
 
+const HOW = `How the rules map to tools: read with lg_start, lg_open and lg_search; save a fact with lg_remember (it is labelled with your app's name automatically); file phone and inbox lines with lg_inbox; pass work to another AI with lg_handoff.
+Before rewriting a note over several steps, call lg_claim so other AIs write to the inbox instead of the same note, and release it when done.
+Locked notes are never shown to you. Don't ask the user to unlock them.`;
+
 export async function createServer(root: string, opts: Options = {}): Promise<McpServer> {
   const lg = new LifeGraph(root, opts);
   const vaultRules = await lg.rules();
@@ -22,7 +26,7 @@ export async function createServer(root: string, opts: Options = {}): Promise<Mc
     "The user's own rules (from index.md):",
     vaultRules ?? DEFAULT_RULES,
     "",
-    "How the rules map to tools: reading is lg_start / lg_open / lg_search; writing a fact is lg_remember; the phone inbox is lg_inbox; task cards are lg_handoff.",
+    HOW,
   ].join("\n");
 
   const server = new McpServer({ name: "lifegraph", version: VERSION }, { instructions });
@@ -86,7 +90,7 @@ export async function createServer(root: string, opts: Options = {}): Promise<Mc
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async (args) => text(await lg.remember(args)),
+    async (args) => text(await lg.remember(args, clientName())),
   );
 
   server.registerTool(
@@ -113,7 +117,7 @@ export async function createServer(root: string, opts: Options = {}): Promise<Mc
     {
       title: "Hand a task to another model",
       description:
-        "Task cards in handoff/ let another model pick up where this one stopped. action 'list' shows cards; 'read' opens one; 'write' creates or updates one (needs name, goal, next, from); 'close' marks it done.",
+        "Handoff notes in handoff/ let another AI pick up where you stopped. action 'list' shows them; 'read' opens one; 'write' creates or updates one (needs name, goal, next); 'close' marks it done.",
       inputSchema: {
         action: z.enum(["list", "read", "write", "close"]),
         name: z.string().optional().describe("Card name, e.g. 'trip-planning'"),
@@ -121,21 +125,38 @@ export async function createServer(root: string, opts: Options = {}): Promise<Mc
         done: z.string().optional().describe("Decisions made and work finished so far"),
         next: z.string().optional().describe("The single next action"),
         questions: z.string().optional().describe("Open questions for the user"),
-        from: z.string().optional().describe("Your model or app name"),
+        notes: z.array(z.string()).optional().describe("Notes this task will change"),
       },
       annotations: { readOnlyHint: false, openWorldHint: false },
     },
-    async ({ action, name, goal, done, next, questions, from }) => {
+    async ({ action, name, goal, done, next, questions, notes }) => {
       if (action === "list") {
         const cards = await lg.handoffList();
-        return text(cards.length ? cards.map((c) => `- ${c.name} [${c.status}] ${c.goal}${c.from ? ` (from ${c.from})` : ""}`).join("\n") : "No handoff cards.");
+        return text(cards.length ? cards.map((c) => `- ${c.name} [${c.status}] ${c.goal}${c.from ? ` (from ${c.from})` : ""}`).join("\n") : "No handoff notes.");
       }
       if (!name) return text("name is required for this action.");
       if (action === "read") return text(await lg.open(`handoff/${name.replace(/^handoff\//, "")}`));
-      if (action === "close") return text(await lg.handoffClose(name));
-      if (!goal || !next) return text("write needs goal and next (and ideally done, questions and from).");
-      return text(await lg.handoffWrite({ name, goal, done, next, questions, from: from ?? clientName() }));
+      if (action === "close") return text(await lg.handoffClose(name, clientName()));
+      if (!goal || !next) return text("write needs goal and next (and ideally done, questions and notes).");
+      return text(await lg.handoffWrite({ name, goal, done, next, questions, notes }, clientName()));
     },
+  );
+
+  server.registerTool(
+    "lg_claim",
+    {
+      title: "Claim notes while editing",
+      description:
+        "action 'claim': say you are editing these notes for the next 30 minutes, so other AIs send their changes to the inbox instead. action 'release': give them back (all of yours if notes is empty). Use it for multi-step rewrites, not for a single lg_remember.",
+      inputSchema: {
+        action: z.enum(["claim", "release"]),
+        notes: z.array(z.string()).optional().describe("Note names or paths"),
+        task: z.string().optional().describe("What you are doing, shown to other AIs"),
+      },
+      annotations: { readOnlyHint: false, openWorldHint: false },
+    },
+    async ({ action, notes, task }) =>
+      text(action === "claim" ? await lg.claim(notes ?? [], clientName(), task) : await lg.release(clientName(), notes)),
   );
 
   return server;

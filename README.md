@@ -1,41 +1,65 @@
 # LifeGraph
 
-**Your AI identity as plain Markdown files you own.** Every assistant you use reads the same small folder about you, in a few hundred tokens, and keeps it up to date by writing back what it learns.
+**One folder about you that every AI on your Mac reads and writes through.**
 
-Free and MIT-licensed. No accounts, no telemetry, no LifeGraph servers.
+LifeGraph is a plain Markdown folder you can open and edit yourself. A small program on your Mac, the *door*, lets Claude, Codex, Cursor and other apps read it and add to it. Each app gets only the notes a question needs, never the whole folder. Free, MIT-licensed, no accounts, no servers.
 
-## Why
+## Install (Mac)
 
-If you use Claude, ChatGPT, Muse and others, each one knows a different slice of you, and none of them can see the rest. LifeGraph is one folder they all share:
+You need [Node.js](https://nodejs.org) 20 or newer. Then, in Terminal:
 
-- **Hub and leaf.** `index.md` lists a few branches, each branch hub lists short leaves. A question loads the index, one hub and one leaf, not your whole life.
-- **Write-back, not rebuilds.** Assistants add a dated line to the right leaf the moment they learn something, so the vault stays current without re-running anything.
-- **Handoff.** Start a task in one model, hand it to another with a task card in `handoff/`.
-- **Yours.** Plain Markdown that opens in any editor and in [Obsidian](https://obsidian.md), with a graph view for free.
+```bash
+curl -fsSL https://raw.githubusercontent.com/theomishin/lifegraph/main/install.sh | bash
+```
 
-## Get started (macOS, about five minutes)
+This sets up everything, on your Mac only:
 
-1. Download this repo (Code, Download ZIP) and unzip it.
-2. In Terminal, run `bash ~/Downloads/lifegraph-main/install/install-macos.sh`. It copies the empty starter vault to `~/LifeGraph` and adds a `lifegraph` connector to Claude Desktop. It needs [Node.js](https://nodejs.org).
-3. Restart Claude Desktop and paste [prompts/fill-from-memory.md](prompts/fill-from-memory.md) into a new chat. Do the same in every other AI you use.
+1. Creates your LifeGraph folder in iCloud Drive (so your iPhone has a copy), linked at `~/LifeGraph`.
+2. Connects the door to Claude Desktop, Claude Code, Codex, Cursor, Gemini CLI and LM Studio, whichever you have.
+3. Starts the mailbox in the background, with no window, so apps that can only use files can ask too.
 
-Not on a Mac, or not using Claude Desktop? Copy `template/` anywhere and point any MCP-capable app's filesystem connector at it.
+Restart your AI apps and tell each one: *"Read my LifeGraph and fill it from what you remember about me."* ([full prompt](prompts/fill-from-memory.md))
+
+Already have a `~/LifeGraph` folder? The installer uses it as is. Add `--icloud` to move it into iCloud Drive: `curl -fsSL .../install.sh | bash -s -- --icloud`.
+
+To remove it: `bash ~/.lifegraph-app/src/uninstall.sh`. Your notes stay.
+
+## How it works
+
+- **The folder.** `index.md` lists a few branches and the rules every AI follows. Each branch has a hub listing short notes. An AI reads the index, then one hub, then one note: a few hundred words instead of your whole life.
+- **The door** (`door/`) is a local MCP server. Apps start it themselves; it makes no network calls. Its tools: `lg_start`, `lg_open`, `lg_search`, `lg_remember`, `lg_inbox`, `lg_handoff`, `lg_claim`.
+- **Locked notes.** `lifegraph lock Money` and the door never shows, searches or edits that note.
+- **Labels.** Every change ends with which AI made it, like `(via Claude)`, so you can see who wrote what.
+- **Inbox.** `inbox/` takes anything that isn't filed yet, including lines you add from your phone in `inbox/phone.md`. The next AI on the Mac files them away.
+- **Handoff.** One AI writes a handoff note in `handoff/` (goal, what's done, next step); another picks it up. While an AI is rewriting a note it claims it, and other AIs' changes go to the inbox instead, so two AIs never edit one note at once.
+- **Mailbox** for file-only apps like Muse on the Mac: the app writes `mailbox/ask-muse.md`, the door answers in `mailbox/reply-muse.md`. Same rules, same locks.
+
+## Command line
+
+```
+lifegraph status          what's in your LifeGraph, what's locked, open handoffs
+lifegraph lock <note>     lock a note (unlock to undo)
+lifegraph card            a short summary of you to paste into apps with no connection
+lifegraph connect         reconnect your apps (after installing a new one)
+```
+
+It lives at `~/.lifegraph-app/bin/lifegraph`.
 
 ## What's in the repo
 
 | Folder | What it holds |
 | --- | --- |
-| [`template/`](template/) | The empty starter vault: `index.md` with the rules for assistants, branch hubs, inbox, handoff |
+| [`door/`](door/) | The door: MCP server, mailbox and command line (TypeScript) |
+| [`template/`](template/) | The empty starter LifeGraph |
 | [`prompts/`](prompts/) | Fill from memory, handoff, identity card, catch-up |
 | [`spec/`](spec/FORMAT.md) | The file format, so other tools can read and write a LifeGraph |
-| [`install/`](install/) | The macOS installer |
 
-Coming next: a dedicated LifeGraph MCP server (search, write-back, privacy levels, handoff), a phone setup through iCloud Drive and Shortcuts, and a website with a live demo vault.
+Not yet: an iPhone app, and a signed Mac app. Until then the door runs on Node.js, so it needs no signing.
 
 ## Privacy
 
-See [PRIVACY.md](PRIVACY.md). In short: nothing leaves your computer except what an assistant reads when you ask it something.
+See [PRIVACY.md](PRIVACY.md). Nothing leaves your Mac except iCloud sync and what an AI reads when you ask it something.
 
 ## License
 
-Code: [MIT](LICENSE). Starter vault, prompts and spec: [CC0](template/LICENSE.md), copy them freely.
+Code: [MIT](LICENSE). Starter folder, prompts and spec: [CC0](template/LICENSE.md).
