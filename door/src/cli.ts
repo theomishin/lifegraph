@@ -8,7 +8,7 @@ import { serveStdio, VERSION } from "./server.js";
 import { LifeGraph } from "./lifegraph.js";
 import { watchMailbox } from "./mailbox.js";
 import { setFrontmatter } from "./vault.js";
-import { appConfigs, installService, logFile, readEntry, runClaude, serviceHelp, serviceStatus, uninstallService, withEntry, withoutEntry } from "./platform.js";
+import { appConfigs, installService, isInstalled, logFile, readEntry, runClaude, serviceHelp, serviceStatus, uninstallService, withEntry, withoutEntry } from "./platform.js";
 
 const HELP = `lifegraph ${VERSION}: one folder about you that every AI reads and writes through
 
@@ -61,8 +61,9 @@ async function connect() {
   const args = [cliPath, "--vault", vault];
   const done: string[] = [];
 
-  for (const { app, file, format } of appConfigs()) {
-    if (!existsSync(path.dirname(file))) continue; // app not installed
+  for (const cfg of appConfigs()) {
+    const { app, file, format } = cfg;
+    if (!isInstalled(cfg)) continue;
     const raw = existsSync(file) ? await fs.readFile(file, "utf8") : "";
     let next: string;
     try {

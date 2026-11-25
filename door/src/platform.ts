@@ -11,6 +11,8 @@ export interface AppConfig {
   app: string;
   file: string;
   format: Format;
+  /** Other signs the app is installed, besides its settings folder existing. */
+  installedIf?: string[];
 }
 
 const home = () => os.homedir();
@@ -32,8 +34,19 @@ export function appConfigs(): AppConfig[] {
     { app: "Cursor", file: path.join(h, ".cursor", "mcp.json"), format: "json" },
     { app: "Gemini CLI", file: path.join(h, ".gemini", "settings.json"), format: "json" },
     { app: "LM Studio", file: path.join(h, ".lmstudio", "mcp.json"), format: "json" },
-    { app: "Codex", file: path.join(process.env.CODEX_HOME ?? path.join(h, ".codex"), "config.toml"), format: "toml" },
+    // The ChatGPT desktop app shares Codex's settings file for local MCP servers.
+    {
+      app: "Codex / ChatGPT app",
+      file: path.join(process.env.CODEX_HOME ?? path.join(h, ".codex"), "config.toml"),
+      format: "toml",
+      installedIf: isMac ? ["/Applications/ChatGPT.app", "/Applications/Codex.app", path.join(h, "Applications", "ChatGPT.app")] : [],
+    },
   ];
+}
+
+/** Is this app on the computer? */
+export function isInstalled(c: AppConfig): boolean {
+  return existsSync(path.dirname(c.file)) || (c.installedIf ?? []).some((p) => existsSync(p));
 }
 
 /** Claude Desktop from the Microsoft Store keeps its settings inside its package folder. */
