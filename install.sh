@@ -54,6 +54,12 @@ exec "$NODE" "$APP/src/door/dist/cli.js" "\$@"
 WRAP
 chmod +x "$APP/bin/lifegraph"
 LG="$APP/bin/lifegraph"
+# Put `lifegraph` on the PATH for new Terminal windows (once; uninstall.sh removes it).
+PATH_LINE='export PATH="$HOME/.lifegraph-app/bin:$PATH" # added by LifeGraph'
+for rc in "$HOME/.zshrc" "$HOME/.bash_profile"; do
+  case "$rc" in *.bash_profile) [ -f "$rc" ] || continue ;; esac  # zsh is the macOS default; bash only if already used
+  grep -qF "# added by LifeGraph" "$rc" 2>/dev/null || printf '\n%s\n' "$PATH_LINE" >> "$rc"
+done
 
 say "2/4 Setting up your LifeGraph folder"
 if [ -e "$LINK" ]; then
@@ -115,4 +121,4 @@ echo
 say "Done."
 echo "Restart your AI apps, then say to each one: \"Read my LifeGraph and fill it from what you remember about me.\""
 echo "The full prompt is in $APP/src/prompts/fill-from-memory.md"
-echo "Command line: $LG help   (add $APP/bin to your PATH to type just 'lifegraph')"
+echo "Command line: open a new Terminal window and type: lifegraph help"

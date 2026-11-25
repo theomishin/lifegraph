@@ -2,8 +2,7 @@
 
 About 20 minutes. Tick each box; if one fails, note what you saw (or paste `lifegraph doctor` output) and it gets fixed.
 
-Tip: add the command line to your PATH first, so you can type `lifegraph`:
-`echo 'export PATH="$HOME/.lifegraph-app/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc`
+Open a new Terminal window after installing so the `lifegraph` command works.
 
 ## 1. Install
 
@@ -24,7 +23,7 @@ Quit and reopen Claude Desktop, new chat:
 ## 3. Codex and Claude Code
 
 - [ ] Codex: `codex` then "Use LifeGraph: what am I working on?" It answers through the door. If not, check `~/.codex/config.toml` has `[mcp_servers.lifegraph]`.
-- [ ] Claude Code: `claude mcp list` shows `lifegraph`. Ask the same question.
+- [ ] Claude Code (if you use it): `claude mcp list` shows `lifegraph`, and `lifegraph doctor` says "Claude Code connected". Ask the same question.
 - [ ] Save a fact from Codex. The line ends with `(via Codex)`.
 
 ## 4. Two AIs at once
