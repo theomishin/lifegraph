@@ -13,14 +13,14 @@
 import { readFileSync, mkdtempSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const door = path.join(here, "..", "door", "dist");
-const { LifeGraph } = await import(path.join(door, "lifegraph.js"));
-const { createServer } = await import(path.join(door, "server.js"));
-const { Client } = await import(path.join(here, "..", "door", "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm", "client", "index.js"));
-const { InMemoryTransport } = await import(path.join(here, "..", "door", "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm", "inMemory.js"));
+const { LifeGraph } = await import(pathToFileURL(path.join(door, "lifegraph.js")).href);
+const { createServer } = await import(pathToFileURL(path.join(door, "server.js")).href);
+const { Client } = await import(pathToFileURL(path.join(here, "..", "door", "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm", "client", "index.js")).href);
+const { InMemoryTransport } = await import(pathToFileURL(path.join(here, "..", "door", "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm", "inMemory.js")).href);
 
 const arg = (n, d) => (process.argv.includes(n) ? process.argv[process.argv.indexOf(n) + 1] : d);
 const sourceDir = path.resolve(arg("--vault", path.join(here, "..", "demo")));

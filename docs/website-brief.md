@@ -2,28 +2,28 @@
 
 This brief is everything needed to build the LifeGraph website. It is written for a coding agent (Codex) working in this repository. Read it top to bottom before writing code. Where it says **must**, that is a hard rule. Where it says *suggested*, use your judgment.
 
-The source of truth for what the product does is the code and docs on the `mac-v0` branch (PR #2): `README.md`, `PRIVACY.md`, `spec/FORMAT.md`, `install.sh`, `door/src/`, the fictional demo folder `demo/`, and the token benchmark in `docs/benchmark.md` (run by `bench/run.mjs` over `bench/questions.json`). If this brief and the code disagree, the code wins, and the site must not promise anything the code doesn't do.
+The source of truth for what the product does is the code and docs on `main`: `README.md`, `PRIVACY.md`, `spec/FORMAT.md`, `install.sh` (Mac and Linux), `install.ps1` (Windows), `door/src/`, the fictional demo folder `demo/`, and the token benchmark in `docs/benchmark.md` (run by `bench/run.mjs` over `bench/questions.json`). If this brief and the code disagree, the code wins, and the site must not promise anything the code doesn't do.
 
 ---
 
 ## 1. The product in one paragraph
 
-LifeGraph is your AI ID: one memory about you that you own, can read and edit yourself, and that every AI on your Mac can use. It is a plain Markdown folder (synced through iCloud Drive), with an `index.md` of rules every AI reads first. A small background program on the Mac, **the door**, is a local MCP server that Claude Desktop, Claude Code, Codex, Cursor, Gemini CLI and LM Studio connect to. The door hands each AI only the few notes a question needs, never the whole folder, and never shows notes you lock. Apps that can only read files (like Muse on the Mac) use a **mailbox** instead: they write an ask file and get a reply file. AIs can pass work to each other through **handoff notes**, and every change carries a label saying which AI made it. One install command, free and open source (MIT), no servers, no accounts.
+LifeGraph is your AI ID: one memory about you that you own, can read and edit yourself, and that every AI on your computer can use, on Mac, Windows or Linux. It is a plain Markdown folder (synced through iCloud Drive on a Mac, or however you like elsewhere), with an `index.md` of rules every AI reads first. A small background program on the computer, **the door**, is a local MCP server that Claude Desktop, Claude Code, Codex, Cursor, Gemini CLI and LM Studio connect to. The door hands each AI only the few notes a question needs, never the whole folder, and never shows notes you lock. Apps that can only read files (like Muse on the Mac) use a **mailbox** instead: they write an ask file and get a reply file. AIs can pass work to each other through **handoff notes**, and every change carries a label saying which AI made it. One install command, free and open source (MIT), no servers, no accounts.
 
 ## 2. Audience
 
 Primary, in order:
 
 1. **People who use more than one AI.** They switch between Claude, ChatGPT, Codex, Cursor and others, and re-explain themselves to each one. Each app's built-in memory is locked inside that app, and they can't see or fix what it remembers.
-2. **Developers and power users on a Mac.** Comfortable pasting a Terminal command, already use Claude Code, Codex or Cursor, and know or will quickly learn what MCP is.
+2. **Developers and power users on Mac, Windows or Linux.** Comfortable pasting one command into Terminal or PowerShell, already use Claude Code, Codex or Cursor, and know or will quickly learn what MCP is.
 3. **Privacy-minded people.** They want their personal context in files on their own disk, not on another company's server.
 
-Not the audience yet: Windows and Linux users, people who only use AI on their phone, teams. The site should say so plainly rather than hide it (see section 8).
+Not the audience yet: people who only use AI on their phone, teams. The site should say so plainly rather than hide it (see section 8).
 
 What they need to believe by the end of the page:
 
 - My memory should be a file I own, not a feature of one app.
-- This works with the AIs I already use, today, on my Mac.
+- This works with the AIs I already use, today, on my computer.
 - It only sends an AI what the question needs, and I control what's off-limits.
 - It's safe to try: free, open source, one command, easy to remove, my notes stay.
 
@@ -37,7 +37,7 @@ What they need to believe by the end of the page:
 | --- | --- | --- |
 | Each app's built-in memory | Stuck in one app, hard to see or correct, gone if you switch | One folder every AI uses; you read and edit it like any notes |
 | Pasting a long "about me" prompt | Goes stale, sent whole every time, wastes context | Always up to date, and the AI opens only the note it needs |
-| Cloud memory services | Another account, another server holding your life | No accounts, no servers; files on your Mac and your own iCloud |
+| Cloud memory services | Another account, another server holding your life | No accounts, no servers; files on your computer, synced only if you choose (iCloud, OneDrive, Syncthing...) |
 | A notes app or Obsidian vault on its own | AIs can't reach it, or read all of it at once | The door gives AIs safe, small, rule-following access |
 
 **The one-line claim:** your context belongs to you, not to whichever AI you happened to tell.
@@ -56,7 +56,7 @@ Pick one for the hero; the others can be used as section headers or social text.
 
 Subheadline (pairs with any of them):
 
-> LifeGraph is a plain folder of notes about you, on your Mac. Claude, Codex, Cursor and other AIs read it and add to it, but each one only sees what the question needs, and never what you lock.
+> LifeGraph is a plain folder of notes about you, on your computer. Claude, Codex, Cursor and other AIs read it and add to it, but each one only sees what the question needs, and never what you lock.
 
 ## 4. Selling points (in priority order)
 
@@ -101,7 +101,7 @@ A single long landing page plus a few small pages. Hosted on **GitHub Pages**.
 ```
 
 Header nav: How it works · Install · Privacy · FAQ · GitHub (link to the repo).
-Footer: MIT license · Spec · Privacy · GitHub · "Made on a Mac. No cookies, no analytics." 
+Footer: MIT license · Spec · Privacy · GitHub · "No cookies, no analytics." 
 
 ### Landing page sections, in order
 
@@ -125,10 +125,10 @@ Use this copy as written unless it doesn't fit the layout; small trims are fine.
 ### 6.1 Hero
 
 - **Headline:** Your AI ID. A memory you own, that every AI can use.
-- **Sub:** LifeGraph is a plain folder of notes about you, on your Mac. Claude, Codex, Cursor and other AIs read it and add to it, but each one only sees what the question needs, and never what you lock.
-- **Primary button:** Install on Mac → `/install/`
+- **Sub:** LifeGraph is a plain folder of notes about you, on your computer. Claude, Codex, Cursor and other AIs read it and add to it, but each one only sees what the question needs, and never what you lock.
+- **Primary button:** Install → `/install/` (the install section detects Mac, Windows or Linux and shows that command first; see 6.8)
 - **Secondary button:** See how it works → `#how`
-- **Small line under buttons:** Free and open source. No accounts. macOS only for now.
+- **Small line under buttons:** Free and open source. No accounts. Mac, Windows and Linux.
 - **Visual:** a stylised folder tree on the left (`index.md`, `Me/`, `Work/`, `People/`, `Money/` with a lock icon) and three or four AI app chips on the right (generic labels, see section 9 on logos) with thin lines going *through a single small "door"* into the folder. The lines touch one note each, not the whole tree.
 
 ### 6.2 The problem
@@ -141,7 +141,7 @@ Use this copy as written unless it doesn't fit the layout; small trims are fine.
 
 ### 6.3 How it works
 
-**Heading:** Three small pieces. All on your Mac.
+**Heading:** Three small pieces. All on your computer.
 
 **1. The folder.**
 > Your LifeGraph is a normal folder of Markdown notes: a few branches (Me, Work, People, Health, Money...) with a short note per subject. At the top sits `index.md`, which lists the branches and the rules every AI follows. Open it in any editor. It's yours.
@@ -190,7 +190,7 @@ Two columns:
 
 **Other ways in**
 - **Muse (Mac app):** through the mailbox.
-- **ChatGPT Mac app:** if your version lets you add a local MCP server, `lifegraph connect` prints the settings to paste in.
+- **ChatGPT desktop app:** if your version lets you add a local MCP server, `lifegraph connect` prints the settings to paste in.
 - **Any app that takes a local MCP server:** same settings.
 - **Phone AIs:** not yet. See below.
 
@@ -202,7 +202,7 @@ Do **not** say ChatGPT is connected automatically. It isn't.
 
 > LifeGraph has no servers. There is no account, no telemetry and no update check. The door makes no network calls, and the build fails if network code ever appears in it.
 >
-> Your notes live in a folder on your Mac. If iCloud Drive is on, they sync to your iPhone through your own Apple account.
+> Your notes live in a folder on your computer. On a Mac with iCloud Drive on, they sync to your iPhone through your own Apple account. On Windows and Linux it's a plain folder: sync it with whatever you already trust, or not at all.
 >
 > The one honest exception: when an AI reads a note to answer you, that text goes to that AI's company, like anything else you type to it. That's why the door only hands over what a question needs, and why you can lock notes you never want any AI to see.
 
@@ -212,33 +212,41 @@ Button: Read the privacy page → `/privacy/`
 
 **Heading:** One command.
 
-> You need a Mac and [Node.js](https://nodejs.org) 20 or newer. Then paste this into Terminal:
+> You need [Node.js](https://nodejs.org) 20 or newer. Then paste one command.
+
+Show three tabs: **Mac**, **Windows**, **Linux**. Pick the visitor's system by default from `navigator.userAgent` (plain inline JS, no library); fall back to Mac. Mac and Linux share the same command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/theomishin/lifegraph/main/install.sh | bash
 ```
 
+Windows, in PowerShell (no administrator rights needed):
+
+```powershell
+irm https://raw.githubusercontent.com/theomishin/lifegraph/main/install.ps1 | iex
+```
+
 Copy button on the code block (must work without any third-party script).
 
-> It creates your LifeGraph folder (in iCloud Drive if it's on), connects the AI apps you have, and starts the mailbox in the background. Then restart your AI apps and say: *"Read my LifeGraph and fill it from what you remember about me."*
+> It creates your LifeGraph folder (in iCloud Drive on a Mac if it's on, a plain folder elsewhere), connects the AI apps you have, and starts the mailbox in the background. Then restart your AI apps and say: *"Read my LifeGraph and fill it from what you remember about me."*
 >
-> To remove it: `bash ~/.lifegraph-app/src/uninstall.sh`. Your notes stay.
+> To remove it: `bash ~/.lifegraph-app/src/uninstall.sh` (Mac, Linux) or `& "$HOME\.lifegraph-app\src\uninstall.ps1"` (Windows). Your notes stay.
 
-Link: Full install guide → `/install/`. Link: Read install.sh first → the file on GitHub (people should be invited to read a script before piping it to bash).
+Link: Full install guide → `/install/`. Link: Read the script first → `install.sh` or `install.ps1` on GitHub, matching the tab (people should be invited to read a script before running it).
 
 ### 6.9 Honest limits
 
 **Heading:** What it doesn't do yet.
 
-- **Mac only, for now.** The installer and background mailbox are macOS-specific.
+- **Linux without systemd** (most containers, some WSL setups): everything works except the background mailbox, which you run yourself with `lifegraph mailbox`.
 - **Phone AIs can't reach it yet.** Your folder syncs to your iPhone through iCloud, and you can add quick notes from your phone into `inbox/phone.md`, but no phone AI app can open the folder by itself. An iPhone app may come later.
-- **Needs Node.js.** Until there's a signed Mac app, the door runs on Node.js.
+- **Needs Node.js.** Until there are signed desktop apps, the door runs on Node.js.
 - **Early software.** This is version 0.1. Expect rough edges, and please report them on GitHub.
 
 ### 6.10 Final call to action
 
 **Heading:** Give every AI the same you.
-Buttons: Install on Mac · Star on GitHub
+Buttons: Install · Star on GitHub
 
 ## 7. Interactive demo (in-browser, no network)
 
@@ -291,22 +299,22 @@ A small line chart under the counter, drawn as inline SVG (no chart library load
 Landing page shows the first six; `/faq/` shows all.
 
 **What is LifeGraph, in one sentence?**
-A folder of notes about you that every AI on your Mac can read and add to, through a small local program that only hands over what each question needs.
+A folder of notes about you that every AI on your computer can read and add to, through a small local program that only hands over what each question needs.
 
 **Is it free?**
 Yes. It's open source under the MIT license. The starter folder, prompts and file format are public domain (CC0). There's no paid tier and no account.
 
 **Where is my data stored?**
-In a folder on your Mac, linked at `~/LifeGraph`. If iCloud Drive is on, the folder lives there so your iPhone has a copy, synced through your own Apple account. LifeGraph itself has no servers.
+In a folder on your computer: `~/LifeGraph` (on Windows, `%USERPROFILE%\LifeGraph`). On a Mac with iCloud Drive on, the folder lives there so your iPhone has a copy, synced through your own Apple account. On Windows and Linux it's a plain folder you can sync with OneDrive, Syncthing, Dropbox or git. LifeGraph itself has no servers.
 
 **Do the AI companies see my notes?**
 Only the notes an AI reads to answer you, and only when you ask it something, the same as anything else you type into it. The door gives each AI the smallest piece that answers the question. Locked notes are never shown to any AI.
 
 **Which AIs work with it?**
-Claude Desktop, Claude Code, Codex, Cursor, Gemini CLI and LM Studio are connected by the installer. Muse on the Mac works through the mailbox. ChatGPT's Mac app works if your version lets you add a local MCP server. Phone AIs can't reach it yet.
+Claude Desktop, Claude Code, Codex, Cursor, Gemini CLI and LM Studio are connected by the installer. Muse on the Mac works through the mailbox. ChatGPT's desktop app works if your version lets you add a local MCP server. Phone AIs can't reach it yet.
 
 **Does it work on Windows, Linux or iPhone?**
-Not yet. It's Mac only for now. Your folder syncs to your iPhone and you can add notes from it, but no phone AI can read the folder by itself yet. An iPhone app may come later.
+Windows and Linux, yes: same features, one command each. iPhone and Android, not yet: on a Mac your folder syncs to your iPhone and you can add notes from it, but no phone AI can read the folder by itself yet. A phone app may come later.
 
 **How is this different from ChatGPT or Claude memory?**
 Those memories live inside one app, on that company's servers, and you can only partly see or edit them. LifeGraph is one set of plain files you own, and every AI you use shares it.
@@ -321,7 +329,7 @@ Model Context Protocol, the open standard AI apps use to connect to local tools 
 Some AI apps can read and write files but can't connect to an MCP server, like Muse on the Mac. They write a question to a file in `mailbox/`, and the door writes the answer back a moment later, with the same rules and locks.
 
 **How do I keep something private?**
-Run `lifegraph lock <note>` (or add `locked: true` to the note's frontmatter). The door will never show, search or edit it. It still syncs through iCloud like any other file.
+Run `lifegraph lock <note>` (or add `locked: true` to the note's frontmatter). The door will never show, search or edit it. It still syncs like any other file, if you sync the folder.
 
 **Can two AIs mess up the same note?**
 No. An AI rewriting a note claims it for up to 30 minutes, and other AIs' changes go to the inbox until it's done.
@@ -333,10 +341,10 @@ Every change ends with a label like *(via Claude)* or *(via Codex)*.
 Yes, in any text editor, or in Obsidian, which reads the same `[[links]]`. It's your folder.
 
 **What do I need to install it?**
-A Mac with Node.js 20 or newer, and one Terminal command. Restart your AI apps afterwards.
+A Mac, Windows or Linux computer with Node.js 20 or newer, and one command in Terminal or PowerShell. Restart your AI apps afterwards.
 
 **How do I uninstall it?**
-Run `bash ~/.lifegraph-app/src/uninstall.sh`. The app and connections are removed; your notes stay where they are.
+Run `bash ~/.lifegraph-app/src/uninstall.sh` (Mac, Linux) or `& "$HOME\.lifegraph-app\src\uninstall.ps1"` (Windows). The app and connections are removed; your notes stay where they are.
 
 **Can I build my own tool on it?**
 Yes. The file format is a short public spec, CC0. See `/spec/`.
@@ -383,10 +391,10 @@ Yes. The file format is a short public spec, CC0. See `/spec/`.
 ## 10. Things the site must never say
 
 - Any token number without "estimated" and the small-folder caveat next to it, any fixed multiplier ("5x fewer tokens"), any percentage not tied to the one-question demo chat, or any cost or speed figure.
-- That it works on Windows, Linux, iPhone or Android today.
+- That it works on iPhone or Android today.
 - That ChatGPT connects automatically.
-- That nothing ever leaves your Mac (iCloud sync and what an AI reads do).
-- That it is "encrypted" (it isn't; it's plain files, protected by your Mac and iCloud).
+- That nothing ever leaves your computer (the sync you choose, and what an AI reads, do).
+- That it is "encrypted" (it isn't; it's plain files, protected by your computer and whatever sync you use).
 - Testimonials, user counts, press logos, or "trusted by".
 - Anything about a real person. All examples use fictional people and data.
 

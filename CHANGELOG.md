@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- Windows and Linux. `install.ps1` is a one-command Windows installer (no administrator rights), and `install.sh` now works on Linux too. On both, LifeGraph is a plain folder you sync however you like.
+- `lifegraph service install|uninstall|status` runs the mailbox in the background with the system's own tool: launchd (Mac), a systemd user service (Linux), Task Scheduler with a Startup-folder fallback (Windows).
+- `lifegraph disconnect` removes the door from every app; both uninstallers use it.
+- On a Mac, `lifegraph connect` also connects the ChatGPT desktop app, which reads Codex's settings file for local MCP servers (it creates that file if only ChatGPT is installed).
+- App settings paths for each system, including Claude Desktop from the Microsoft Store. The doctor checks the background mailbox on all three systems.
+- CI runs the tests and the real installers on Mac, Linux and Windows.
 - The door: a local MCP server for Claude Desktop, Claude Code, Codex, Cursor, Gemini CLI and LM Studio, with index-first reads, line search, locked notes, labelled changes, inbox filing, handoff notes and note claims.
 - The mailbox, so file-only apps (Muse on the Mac) can ask through `mailbox/ask-*.md`.
 - One-command Mac installer: iCloud Drive folder, app connections, background mailbox. Uninstaller keeps your notes.

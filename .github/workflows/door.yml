@@ -9,11 +9,13 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     defaults:
       run:
         working-directory: door
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,7 +25,59 @@ jobs:
       - name: No network code
         run: npm run check:no-network
       - run: npm test
-      - name: Installer syntax
+      - name: Installer syntax (bash)
         run: bash -n ../install.sh && bash -n ../uninstall.sh
+      - name: Installer syntax (PowerShell)
+        shell: pwsh
+        run: |
+          foreach ($f in '../install.ps1', '../uninstall.ps1') {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors | ForEach-Object { Write-Error "$f $($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }
+          }
       - name: Token benchmark (demo folder, estimated)
         run: node ../bench/run.mjs
+
+  # Run the real one-command installers on each system, then the doctor (which does a live
+  # mailbox round trip through the background service), then the uninstaller.
+  install:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Let this user run systemd services (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+          for i in $(seq 1 20); do [ -S "/run/user/$(id -u)/bus" ] && break; sleep 0.5; done
+      - name: Install, doctor, uninstall (Mac and Linux)
+        if: runner.os != 'Windows'
+        run: |
+          bash install.sh
+          "$HOME/.lifegraph-app/bin/lifegraph" doctor
+          "$HOME/.lifegraph-app/bin/lifegraph" status
+          bash uninstall.sh
+          test ! -e "$HOME/.lifegraph-app"
+          test -f "$HOME/LifeGraph/index.md"
+      - name: Install, doctor, uninstall (Windows PowerShell)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          & "$HOME\.lifegraph-app\bin\lifegraph.cmd" doctor
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
+          cmd /c "schtasks /Query /TN LifeGraphMailbox >nul 2>&1"
+          if ($LASTEXITCODE -eq 0) { Write-Error 'task still there'; exit 1 }
+          if (-not (Test-Path "$HOME\LifeGraph\index.md")) { Write-Error 'notes were removed'; exit 1 }
+          if (Test-Path "$HOME\.lifegraph-app") { Write-Error 'app folder still there'; exit 1 }
+          exit 0  # the schtasks query above is meant to fail, and its exit code would end the step

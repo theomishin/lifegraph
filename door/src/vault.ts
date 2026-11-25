@@ -137,7 +137,7 @@ export class Vault {
     // Unique temp name: several apps may each run their own door at the same time.
     const tmp = `${abs}.${process.pid}-${randomBytes(4).toString("hex")}.lifegraph-tmp`;
     await fs.writeFile(tmp, content, "utf8");
-    await fs.rename(tmp, abs);
+    await renameRetry(tmp, abs);
   }
 
   async remove(rel: string): Promise<void> {
@@ -175,7 +175,8 @@ export class Vault {
         await h.close();
         break;
       } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+        // Windows reports EPERM while another process is still deleting the old lock.
+        if (!["EEXIST", "EPERM", "EBUSY"].includes((e as NodeJS.ErrnoException).code ?? "")) throw e;
         try {
           const st = await fs.stat(lock);
           if (Date.now() - st.mtimeMs > 15000) await fs.unlink(lock).catch(() => undefined);
@@ -192,6 +193,25 @@ export class Vault {
     } finally {
       this.depth = 0;
       await fs.unlink(lock).catch(() => undefined);
+    }
+  }
+}
+
+/**
+ * Rename that survives Windows, where replacing a file fails for a moment while another
+ * process (an app's door, antivirus, a sync tool) has it open.
+ */
+export async function renameRetry(from: string, to: string): Promise<void> {
+  for (let i = 0; ; i++) {
+    try {
+      return await fs.rename(from, to);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code ?? "";
+      if (i >= 40 || !["EPERM", "EBUSY", "EACCES"].includes(code)) {
+        await fs.unlink(from).catch(() => undefined);
+        throw e;
+      }
+      await new Promise((r) => setTimeout(r, 25 + i * 10));
     }
   }
 }
