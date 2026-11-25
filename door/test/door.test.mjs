@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, cpSync, writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { LifeGraph, label } from "../dist/lifegraph.js";
 import { processMailbox } from "../dist/mailbox.js";
@@ -14,7 +15,7 @@ const NOW = () => new Date("2026-11-25T10:00:00");
 
 function vault() {
   const dir = mkdtempSync(path.join(tmpdir(), "lg-"));
-  cpSync(new URL("../../template", import.meta.url).pathname, dir, { recursive: true });
+  cpSync(fileURLToPath(new URL("../../template", import.meta.url)), dir, { recursive: true });
   writeFileSync(path.join(dir, "Interests/books.md"), "---\nupdated: 2026-11-01\n---\n# Books\nPart of [[Interests]].\n\n- 2026-11-01: Reading Middlemarch, halfway through.\n");
   writeFileSync(path.join(dir, "Interests/Interests.md"), "# Interests\nBack to [[index]].\n\n- [[books]] — what I am reading now.\n");
   writeFileSync(path.join(dir, "Money/budget.md"), "---\nlocked: true\n---\n# Budget\n\n- Savings goal is secret.\n");
@@ -228,4 +229,25 @@ test("Windows line endings are handled", async () => {
   writeFileSync(path.join(dir, "Interests/films.md"), "---\r\nlocked: true\r\n---\r\n# Films\r\n\r\n- Loves Ghibli.\r\n");
   const lg = new LifeGraph(dir, { now: NOW });
   assert.match(await lg.open("films"), /locked/);
+});
+
+test("app settings: add, read and remove the door's entry (JSON and TOML, Windows paths too)", async () => {
+  const { withEntry, withoutEntry, readEntry } = await import("../dist/platform.js");
+  const cmd = "C:\\Program Files\\nodejs\\node.exe";
+  const args = ["C:\\Users\\Ana Lima\\.lifegraph-app\\src\\door\\dist\\cli.js", "--vault", "C:\\Users\\Ana Lima\\LifeGraph"];
+  const json = withEntry('{"mcpServers":{"other":{"command":"x"}},"theme":"dark"}', "json", cmd, args);
+  assert.deepEqual(readEntry(json, "json"), { command: cmd, args });
+  const back = JSON.parse(withoutEntry(json, "json"));
+  assert.deepEqual(back, { mcpServers: { other: { command: "x" } }, theme: "dark" });
+  assert.equal(withoutEntry(back && JSON.stringify(back), "json"), undefined);
+
+  const toml = withEntry('model = "o5"\r\n\r\n[mcp_servers.lifegraph]\r\ncommand = "old"\r\n\r\n[other]\r\nx = 1\r\n', "toml", cmd, args);
+  assert.deepEqual(readEntry(toml, "toml"), { command: cmd, args });
+  assert.equal((toml.match(/mcp_servers\.lifegraph/g) ?? []).length, 1);
+  assert.match(toml, /\[other\]\nx = 1/);
+  const removed = withoutEntry(toml, "toml");
+  assert.doesNotMatch(removed, /lifegraph/);
+  assert.match(removed, /model = "o5"/);
+  assert.equal(withoutEntry(removed, "toml"), undefined);
+  assert.equal(withEntry("", "toml", cmd, args).startsWith("[mcp_servers.lifegraph]"), true);
 });

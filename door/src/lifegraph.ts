@@ -1,7 +1,7 @@
 // LifeGraph operations, independent of MCP so the door, the mailbox and the CLI share them.
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { extractRules, Note, setFrontmatter, splitFrontmatter, today, Vault } from "./vault.js";
+import { extractRules, Note, renameRetry, setFrontmatter, splitFrontmatter, today, Vault } from "./vault.js";
 import { search, Hit } from "./search.js";
 
 export interface Options {
@@ -354,9 +354,9 @@ export class LifeGraph {
   async writeState(file: string, value: unknown): Promise<void> {
     await fs.mkdir(this.vault.stateDir(), { recursive: true });
     const target = path.join(this.vault.stateDir(), file);
-    const tmp = `${target}.${process.pid}.tmp`;
+    const tmp = `${target}.${process.pid}-${Math.random().toString(36).slice(2, 8)}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(value, null, 2));
-    await fs.rename(tmp, target);
+    await renameRetry(tmp, target);
   }
 }
 

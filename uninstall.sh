@@ -1,24 +1,26 @@
 #!/bin/bash
-# Removes the LifeGraph door, the background mailbox and the app connections.
+# Removes the LifeGraph door, the background mailbox and the app connections (Mac and Linux).
 # Your LifeGraph folder and its notes are left exactly where they are.
 set -uo pipefail
 APP="$HOME/.lifegraph-app"
-launchctl bootout "gui/$(id -u)/com.lifegraph.mailbox" 2>/dev/null
-rm -f "$HOME/Library/LaunchAgents/com.lifegraph.mailbox.plist"
-if command -v node >/dev/null; then
-  node -e '
-const fs = require("fs"), os = require("os"), path = require("path");
-const h = os.homedir();
-for (const f of ["Library/Application Support/Claude/claude_desktop_config.json", ".cursor/mcp.json", ".gemini/settings.json", ".lmstudio/mcp.json"].map(p => path.join(h, p))) {
-  try { const c = JSON.parse(fs.readFileSync(f, "utf8")); if (c.mcpServers && c.mcpServers.lifegraph) { delete c.mcpServers.lifegraph; fs.writeFileSync(f, JSON.stringify(c, null, 2) + "\n"); console.log("Disconnected " + f); } } catch {}
-}
-const t = path.join(h, ".codex/config.toml");
-try { const s = fs.readFileSync(t, "utf8"); const n = s.replace(/\n?\[mcp_servers\.lifegraph\]\n(?:(?!\[)[^\n]*\n?)*/g, "\n"); if (n !== s) { fs.writeFileSync(t, n); console.log("Disconnected " + t); } } catch {}
-'
+CLI="$APP/src/door/dist/cli.js"
+if command -v node >/dev/null && [ -f "$CLI" ]; then
+  node "$CLI" service uninstall
+  node "$CLI" disconnect
+else
+  # The door is already gone; clean up what it may have left behind.
+  if [ "$(uname)" = "Darwin" ]; then
+    launchctl bootout "gui/$(id -u)/com.lifegraph.mailbox" 2>/dev/null
+    rm -f "$HOME/Library/LaunchAgents/com.lifegraph.mailbox.plist"
+  elif command -v systemctl >/dev/null; then
+    systemctl --user disable --now lifegraph-mailbox 2>/dev/null
+    rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/lifegraph-mailbox.service"
+  fi
+  command -v claude >/dev/null && claude mcp remove --scope user lifegraph >/dev/null 2>&1
 fi
-command -v claude >/dev/null && claude mcp remove --scope user lifegraph >/dev/null 2>&1
-for rc in "$HOME/.zshrc" "$HOME/.bash_profile"; do
-  [ -f "$rc" ] && grep -qF "# added by LifeGraph" "$rc" && sed -i '' '/# added by LifeGraph/d' "$rc"
+for rc in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
+  # -i.bak works with both the Mac (BSD) and Linux (GNU) sed.
+  [ -f "$rc" ] && grep -qF "# added by LifeGraph" "$rc" && sed -i.bak '/# added by LifeGraph/d' "$rc" && rm -f "$rc.bak"
 done
 rm -rf "$APP"
 echo "LifeGraph is uninstalled. Your notes are still in ~/LifeGraph."

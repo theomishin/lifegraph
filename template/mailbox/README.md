@@ -1,6 +1,6 @@
 # Mailbox
 
-For apps that can only read and write files. Write `ask-<app>.md` here; the LifeGraph door on the Mac answers in `reply-<app>.md` within a few seconds.
+For apps that can only read and write files. Write `ask-<app>.md` here; the LifeGraph door on your computer answers in `reply-<app>.md` within a few seconds.
 
 Example `ask-muse.md`:
 

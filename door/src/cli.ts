@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // lifegraph: the door's command line. Runs the MCP server, the mailbox, and setup helpers.
-import { promises as fs, existsSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { promises as fs, appendFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +8,7 @@ import { serveStdio, VERSION } from "./server.js";
 import { LifeGraph } from "./lifegraph.js";
 import { watchMailbox } from "./mailbox.js";
 import { setFrontmatter } from "./vault.js";
+import { appConfigs, installService, logFile, readEntry, runClaude, serviceHelp, serviceStatus, uninstallService, withEntry, withoutEntry } from "./platform.js";
 
 const HELP = `lifegraph ${VERSION}: one folder about you that every AI reads and writes through
 
@@ -17,6 +17,8 @@ Usage:
   lifegraph mailbox           Answer ask files in mailbox/ for file-only apps (runs in the background after install)
   lifegraph init [folder]     Create a starter LifeGraph (default ~/LifeGraph)
   lifegraph connect           Add the door to Claude Desktop, Claude Code, Codex, Cursor, Gemini CLI and LM Studio
+  lifegraph disconnect        Remove the door from those apps again (your notes stay)
+  lifegraph service install   Run the mailbox in the background at login (also: uninstall, status)
   lifegraph lock <note>       Lock a note: the door never shares or edits it
   lifegraph unlock <note>     Unlock it again
   lifegraph card              Print a short identity card to paste into apps with no connection
@@ -37,7 +39,9 @@ const expand = (p: string) => (p.startsWith("~") ? path.join(os.homedir(), p.sli
 const vault = path.resolve(expand(arg("--vault") ?? process.env.LIFEGRAPH_DIR ?? "~/LifeGraph"));
 const here = path.dirname(fileURLToPath(import.meta.url));
 const templateDir = path.resolve(here, "..", "template");
-const positional = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--vault");
+const cliPath = fileURLToPath(import.meta.url);
+const VALUE_FLAGS = ["--vault", "--log"];
+const positional = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && !VALUE_FLAGS.includes(all[i - 1]));
 
 async function init(target: string) {
   if (existsSync(target)) return console.log(`${target} already exists; leaving it as it is.`);
@@ -54,65 +58,76 @@ async function backupAndWrite(file: string, content: string) {
 
 async function connect() {
   const command = process.execPath;
-  const args = [fileURLToPath(import.meta.url), "--vault", vault];
-  const home = os.homedir();
-  const claudeDir =
-    process.platform === "darwin"
-      ? path.join(home, "Library/Application Support/Claude")
-      : process.platform === "win32"
-        ? path.join(process.env.APPDATA ?? path.join(home, "AppData/Roaming"), "Claude")
-        : path.join(home, ".config/Claude");
-  const jsonApps = [
-    { app: "Claude Desktop", file: path.join(claudeDir, "claude_desktop_config.json") },
-    { app: "Cursor", file: path.join(home, ".cursor/mcp.json") },
-    { app: "Gemini CLI", file: path.join(home, ".gemini/settings.json") },
-    { app: "LM Studio", file: path.join(home, ".lmstudio/mcp.json") },
-  ];
+  const args = [cliPath, "--vault", vault];
   const done: string[] = [];
 
-  for (const { app, file } of jsonApps) {
+  for (const { app, file, format } of appConfigs()) {
     if (!existsSync(path.dirname(file))) continue; // app not installed
-    let cfg: { mcpServers?: Record<string, unknown> } = {};
-    if (existsSync(file)) {
-      const raw = await fs.readFile(file, "utf8");
-      try {
-        cfg = raw.trim() ? JSON.parse(raw) : {};
-      } catch {
-        console.log(`- ${app}: ${file} is not valid JSON, skipped. Add the door by hand (see below).`);
-        continue;
-      }
+    const raw = existsSync(file) ? await fs.readFile(file, "utf8") : "";
+    let next: string;
+    try {
+      next = withEntry(raw, format, command, args);
+    } catch {
+      console.log(`- ${app}: ${file} is not valid ${format.toUpperCase()}, skipped. Add the door by hand (see below).`);
+      continue;
     }
-    cfg.mcpServers = { ...(cfg.mcpServers ?? {}), lifegraph: { command, args } };
-    await backupAndWrite(file, JSON.stringify(cfg, null, 2) + "\n");
-    done.push(app);
-  }
-
-  // Codex keeps its settings in TOML.
-  const codex = path.join(home, ".codex/config.toml");
-  if (existsSync(path.dirname(codex))) {
-    const raw = existsSync(codex) ? await fs.readFile(codex, "utf8") : "";
-    const block = `[mcp_servers.lifegraph]\ncommand = ${JSON.stringify(command)}\nargs = [${args.map((a) => JSON.stringify(a)).join(", ")}]\n`;
-    const without = raw.replace(/\n?\[mcp_servers\.lifegraph\]\n(?:(?!\[)[^\n]*\n?)*/g, "\n").replace(/\s*$/, "");
-    await backupAndWrite(codex, (without ? without + "\n\n" : "") + block);
-    done.push("Codex");
+    await backupAndWrite(file, next);
+    if (!done.includes(app)) done.push(app);
   }
 
   // Claude Code has its own command for this.
   try {
-    execFileSync("claude", ["mcp", "remove", "--scope", "user", "lifegraph"], { stdio: "ignore" });
+    runClaude(["mcp", "remove", "--scope", "user", "lifegraph"]);
   } catch {
     /* not there yet, or no Claude Code */
   }
   try {
-    execFileSync("claude", ["mcp", "add", "--scope", "user", "lifegraph", "--", command, ...args], { stdio: "ignore" });
+    runClaude(["mcp", "add", "--scope", "user", "lifegraph", "--", command, ...args]);
     done.push("Claude Code");
   } catch {
     /* Claude Code not installed */
   }
 
   console.log(done.length ? `Connected: ${done.join(", ")}. Restart those apps.` : "No supported apps found.");
-  console.log(`\nFor any other app that takes a local MCP server (ChatGPT's Mac app, if yours offers it), use:\n  command: ${command}\n  args:    ${args.join(" ")}`);
+  console.log(`\nFor any other app that takes a local MCP server, use:\n  command: ${command}\n  args:    ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}`);
   console.log(`\nApps that can only read files (like Muse): tell them to read ${path.join(vault, "index.md")}. It explains the mailbox.`);
+}
+
+/** Remove the door from every app. Used by the uninstallers; notes are not touched. */
+async function disconnect() {
+  for (const { app, file, format } of appConfigs()) {
+    if (!existsSync(file)) continue;
+    try {
+      const next = withoutEntry(await fs.readFile(file, "utf8"), format);
+      if (next === undefined) continue;
+      await backupAndWrite(file, next);
+      console.log(`Disconnected ${app} (${file})`);
+    } catch {
+      console.log(`- ${app}: couldn't read ${file}; remove the "lifegraph" entry by hand.`);
+    }
+  }
+  try {
+    runClaude(["mcp", "remove", "--scope", "user", "lifegraph"]);
+    console.log("Disconnected Claude Code");
+  } catch {
+    /* not connected, or no Claude Code */
+  }
+}
+
+async function service(action: string | undefined) {
+  if (action === "install") {
+    try {
+      console.log(await installService(process.execPath, cliPath, vault));
+    } catch (e) {
+      console.log(`The mailbox could not start in the background: ${e instanceof Error ? e.message : e}.`);
+      console.log(`Everything else works. To use the mailbox, keep this running in a terminal: lifegraph mailbox`);
+      process.exitCode = 1;
+    }
+  } else if (action === "uninstall") console.log(await uninstallService());
+  else if (action === "status" || !action) {
+    const st = serviceStatus();
+    console.log(!st.installed ? "The background mailbox is not set up. Run: lifegraph service install" : `The background mailbox is set up (${st.detail}) and ${st.running ? "running" : "not running"}. Log: ${logFile()}`);
+  } else throw new Error(`Unknown action "${action}". Use: lifegraph service install | uninstall | status`);
 }
 
 async function setLock(ref: string | undefined, locked: boolean) {
@@ -164,7 +179,7 @@ async function doctor(): Promise<boolean> {
   const real = lg.vault.root;
   pass(`Folder: ${vault}${real !== vault ? ` -> ${real}` : ""}${/Mobile Documents/.test(real) ? " (iCloud Drive)" : ""}`);
 
-  if (!existsSync(path.join(real, "index.md"))) fail("index.md is missing", "copy index.md from ~/.lifegraph-app/src/template/ into your LifeGraph folder.");
+  if (!existsSync(path.join(real, "index.md"))) fail("index.md is missing", `copy index.md from ${path.join(templateDir, "index.md")} into your LifeGraph folder.`);
   else if (!(await lg.rules())) warn("index.md has no \"## Rules for ...\" section", "AIs will use the door's default rules. See template/index.md for the section to add.");
   else pass("index.md with rules for AIs");
 
@@ -179,7 +194,7 @@ async function doctor(): Promise<boolean> {
   await walk(real);
   if (placeholders.length)
     fail(`${placeholders.length} note(s) are in iCloud but not downloaded to this Mac, so AIs can't read them`, "in Finder, right-click the LifeGraph folder in iCloud Drive and choose Keep Downloaded.");
-  else pass("All notes are on this Mac");
+  else pass(`All notes are on this ${process.platform === "darwin" ? "Mac" : "computer"}`);
 
   try {
     await lg.vault.withLock(async () => {
@@ -187,40 +202,39 @@ async function doctor(): Promise<boolean> {
     });
     pass("The door can write to the folder");
   } catch (e) {
-    fail(`The door can't write to the folder: ${e instanceof Error ? e.message : e}`, "check the folder's permissions in Finder (Get Info, Sharing & Permissions).");
+    fail(`The door can't write to the folder: ${e instanceof Error ? e.message : e}`, process.platform === "darwin"
+        ? "check the folder's permissions in Finder (Get Info, Sharing & Permissions)."
+        : process.platform === "win32"
+          ? "check the folder's permissions (right-click it, Properties, Security), and that it isn't marked read-only."
+          : `check the folder's permissions: ls -ld "${real}"`);
   }
 
   const notes = await lg.vault.list();
   pass(`${notes.length} notes, ${notes.filter((n) => n.locked).length} locked, ${(await lg.inboxLines()).length} inbox line(s)`);
 
   // App connections
-  const home = os.homedir();
-  const configs = [
-    ["Claude Desktop", path.join(home, "Library/Application Support/Claude/claude_desktop_config.json")],
-    ["Cursor", path.join(home, ".cursor/mcp.json")],
-    ["Gemini CLI", path.join(home, ".gemini/settings.json")],
-    ["LM Studio", path.join(home, ".lmstudio/mcp.json")],
-    ["Codex", path.join(home, ".codex/config.toml")],
-  ];
   let connected = 0;
-  for (const [app, file] of configs) {
+  const seen = new Set<string>();
+  for (const { app, file, format } of appConfigs()) {
     if (!existsSync(file)) continue;
-    const raw = await fs.readFile(file, "utf8");
-    if (!/lifegraph/.test(raw)) {
-      warn(`${app} is installed but not connected`, "run: lifegraph connect");
+    const entry = readEntry(await fs.readFile(file, "utf8"), format);
+    if (!entry) {
+      if (!seen.has(app)) warn(`${app} is installed but not connected`, "run: lifegraph connect");
       continue;
     }
-    const paths = [...raw.matchAll(/"(\/[^"]*cli\.js)"/g)].map((m) => m[1]);
-    if (paths.some((p) => !existsSync(p))) fail(`${app} points at a door that no longer exists`, "run: lifegraph connect");
+    seen.add(app);
+    const door = entry.args.find((a) => /cli\.js$/.test(a));
+    if (!existsSync(entry.command) || (door && !existsSync(door))) fail(`${app} points at a door that no longer exists`, "run: lifegraph connect");
     else {
       pass(`${app} connected`);
       connected++;
     }
   }
   // Claude Code keeps user-scope servers in ~/.claude.json.
+  const home = os.homedir();
   let hasClaudeCode = existsSync(path.join(home, ".claude.json"));
   try {
-    execFileSync("claude", ["--version"], { stdio: "ignore" });
+    runClaude(["--version"]);
     hasClaudeCode = true;
   } catch {
     /* not on PATH */
@@ -240,35 +254,33 @@ async function doctor(): Promise<boolean> {
   }
   if (!connected) warn("No AI apps connected yet", "install Claude Desktop, Codex or Cursor, then run: lifegraph connect");
 
-  // Mailbox: a real round trip through the background agent.
-  if (process.platform === "darwin") {
-    let running = false;
-    try {
-      running = /state = running/.test(execFileSync("launchctl", ["print", `gui/${process.getuid?.()}/com.lifegraph.mailbox`], { encoding: "utf8" }));
-    } catch {
-      /* not loaded */
+  // Mailbox: a real round trip through the background service.
+  const svc = serviceStatus();
+  if (!svc.installed && !svc.supported)
+    warn("The mailbox can't run in the background here (no systemd user services)", "file-only apps get answers only while you keep this open: lifegraph mailbox");
+  else if (!svc.installed) fail("The mailbox isn't set up to run in the background", "run: lifegraph service install");
+  else if (!svc.running) fail(`The mailbox is set up (${svc.detail}) but not running`, `run: lifegraph service install   (${serviceHelp()})`);
+  else {
+    const ask = path.join(real, "mailbox", "ask-doctor.md");
+    const reply = path.join(real, "mailbox", "reply-doctor.md");
+    await fs.mkdir(path.dirname(ask), { recursive: true });
+    await fs.rm(reply, { force: true });
+    await fs.writeFile(ask, "from: doctor\ninbox\n");
+    let answered = false;
+    for (let i = 0; i < 20 && !answered; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      answered = existsSync(reply);
     }
-    if (!running) fail("The mailbox isn't running in the background", "run the installer again; details in ~/Library/Logs/LifeGraph/mailbox.log");
-    else {
-      const ask = path.join(real, "mailbox", "ask-doctor.md");
-      const reply = path.join(real, "mailbox", "reply-doctor.md");
-      await fs.mkdir(path.dirname(ask), { recursive: true });
-      await fs.rm(reply, { force: true });
-      await fs.writeFile(ask, "from: doctor\ninbox\n");
-      let answered = false;
-      for (let i = 0; i < 20 && !answered; i++) {
-        await new Promise((r) => setTimeout(r, 500));
-        answered = existsSync(reply);
-      }
-      await fs.rm(ask, { force: true });
-      await fs.rm(reply, { force: true });
-      if (answered) pass("Mailbox answered a test question");
-      else
-        fail(
-          "The mailbox is running but didn't answer within 10 seconds",
-          "macOS may be blocking it from your iCloud folder. Open ~/Library/Logs/LifeGraph/mailbox.log; if it says 'Operation not permitted', give Node Full Disk Access in System Settings > Privacy & Security, then run the installer again.",
-        );
-    }
+    await fs.rm(ask, { force: true });
+    await fs.rm(reply, { force: true });
+    if (answered) pass("Mailbox answered a test question");
+    else
+      fail(
+        "The mailbox is running but didn't answer within 10 seconds",
+        process.platform === "darwin"
+          ? `macOS may be blocking it from your iCloud folder. Open ${logFile()}; if it says 'Operation not permitted', give Node Full Disk Access in System Settings > Privacy & Security, then run the installer again.`
+          : `open ${logFile()} to see why, then run: lifegraph service install`,
+      );
   }
 
   console.log(ok ? "\nEverything looks good." : "\nSome things need fixing (see above).");
@@ -285,12 +297,15 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+  if (cmd === "disconnect") return disconnect();
+  if (cmd === "service" && positional[1] !== "install") return service(positional[1]);
   if (!existsSync(vault)) {
     // stdout is the MCP channel when an app runs us, so errors go to stderr
     console.error(`No LifeGraph folder at ${vault}. Create one with: lifegraph init`);
     process.exit(1);
   }
   if (cmd === "connect") return connect();
+  if (cmd === "service") return service(positional[1]);
   if (cmd === "lock" || cmd === "unlock") return setLock(positional[1], cmd === "lock");
   if (cmd === "card") return console.log(await new LifeGraph(vault).card());
   if (cmd === "status") return status();
@@ -300,9 +315,16 @@ async function main() {
   }
   if (cmd === "mailbox") {
     const lg = new LifeGraph(vault);
+    const logTo = arg("--log");
+    if (logTo && existsSync(logTo) && (await fs.stat(logTo)).size > 1_000_000) await fs.rename(logTo, `${logTo}.old`).catch(() => undefined);
+    const log = (m: string) => {
+      const line = `${new Date().toISOString()} ${m}`;
+      if (logTo) appendFileSync(logTo, line + "\n");
+      else console.log(line);
+    };
     await fs.mkdir(lg.vault.resolve("mailbox"), { recursive: true });
-    console.log(`Mailbox open at ${lg.vault.resolve("mailbox")}`);
-    watchMailbox(lg, (m) => console.log(`${new Date().toISOString()} ${m}`));
+    log(`Mailbox open at ${lg.vault.resolve("mailbox")}`);
+    watchMailbox(lg, log);
     return;
   }
   if (cmd && cmd !== "serve") {
