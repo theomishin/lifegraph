@@ -25,3 +25,5 @@ jobs:
       - run: npm test
       - name: Installer syntax
         run: bash -n ../install.sh && bash -n ../uninstall.sh
+      - name: Token benchmark (demo folder, estimated)
+        run: node ../bench/run.mjs

@@ -7,13 +7,13 @@
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-const roots = ["template", "prompts", "spec", "site/demo"].filter((d) => existsSync(d));
+const roots = ["template", "prompts", "spec", "demo", "site"].filter((d) => existsSync(d));
 const names = existsSync(".private-names")
   ? readFileSync(".private-names", "utf8").split("\n").map((s) => s.trim()).filter((s) => s && !s.startsWith("#"))
   : [];
 
 const walk = (dir) =>
-  readdirSync(dir).flatMap((f) => {
+  readdirSync(dir).filter((f) => !f.startsWith(".")).flatMap((f) => {
     const p = join(dir, f);
     return statSync(p).isDirectory() ? walk(p) : [p];
   });

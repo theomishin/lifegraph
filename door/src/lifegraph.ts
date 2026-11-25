@@ -72,7 +72,9 @@ export class LifeGraph {
     seen[client] = this.now().getTime();
     await this.writeState("seen.json", seen);
 
-    const parts = [index ? index.body.trim() : "(No index.md found in the LifeGraph folder.)"];
+    // The mailbox section is for file-only apps; apps using the door don't need it.
+    const indexText = index ? index.body.replace(/^##\s+For apps that can only[\s\S]*?(?=^##\s|(?![\s\S]))/m, "").trim() : "";
+    const parts = [indexText || "(No index.md found in the LifeGraph folder.)"];
     if (since && changed.length) {
       parts.push("## Changed since you last looked\n" + changed.map((n) => `- ${n.rel}${n.frontmatter.updated_by ? ` (by ${n.frontmatter.updated_by})` : ""}`).join("\n"));
     }

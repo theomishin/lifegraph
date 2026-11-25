@@ -12,22 +12,18 @@ const DEFAULT_RULES = `- Call lg_start at the start of every chat, then open onl
 - Leaves hold the current state: replace a stale line (lg_remember with replaces) instead of adding a second one.
 - Only write what the user said or decided. No guesses, no advice.`;
 
-const HOW = `How the rules map to tools: read with lg_start, lg_open and lg_search; save a fact with lg_remember (it is labelled with your app's name automatically); file phone and inbox lines with lg_inbox; pass work to another AI with lg_handoff.
-Before rewriting a note over several steps, call lg_claim so other AIs write to the inbox instead of the same note, and release it when done.
-Locked notes are never shown to you. Don't ask the user to unlock them.`;
+const HOW = `Save lasting facts with lg_remember (labelled with your app's name automatically). Before rewriting a note over several steps, lg_claim it. Locked notes are never shown; don't ask to unlock them.`;
 
 export async function createServer(root: string, opts: Options = {}): Promise<McpServer> {
   const lg = new LifeGraph(root, opts);
+  // Keep this short: it is sent in every chat. The user's own rules come with lg_start (from index.md),
+  // so they are not repeated here.
   const vaultRules = await lg.rules();
   const instructions = [
-    "LifeGraph is the user's memory across AI assistants: a folder of Markdown files (index.md -> branch hubs -> leaves).",
-    "Use these tools instead of guessing about the user. Load as little as possible: start with lg_start, then open one hub, then one leaf.",
-    "",
-    "The user's own rules (from index.md):",
-    vaultRules ?? DEFAULT_RULES,
-    "",
+    "LifeGraph is the user's memory, shared by all their AI apps. Call lg_start at the start of a chat and follow the rules it returns. Then load as little as possible: lg_search, or one note with lg_open.",
+    vaultRules ? "" : `Rules:\n${DEFAULT_RULES}\n`,
     HOW,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   const server = new McpServer({ name: "lifegraph", version: VERSION }, { instructions });
   const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
@@ -38,7 +34,7 @@ export async function createServer(root: string, opts: Options = {}): Promise<Mc
     {
       title: "Start: read the LifeGraph index",
       description:
-        "Call once at the start of every chat. Returns index.md (the branches and the user's rules), leaves changed since this app last looked, open handoff cards and the inbox count. Small: a few hundred tokens.",
+        "Call once at the start of a chat: the index, the user's rules, what changed, open handoffs.",
       inputSchema: {},
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -50,7 +46,7 @@ export async function createServer(root: string, opts: Options = {}): Promise<Mc
     {
       title: "Open one hub or leaf",
       description:
-        "Open one note by its [[link]] name (e.g. 'People', 'books') or path ('Interests/books.md'). Open a branch hub first to see its leaves, then only the leaf you need. Never open everything.",
+        "Open one note by link name ('books') or path ('Interests/books.md'). Open a hub to see its notes.",
       inputSchema: { name: z.string().describe("Link name or vault-relative path of the note") },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -61,7 +57,7 @@ export async function createServer(root: string, opts: Options = {}): Promise<Mc
     "lg_search",
     {
       title: "Search LifeGraph",
-      description: "Full-text search across the vault. Returns the best matching lines with their file and heading, not whole files.",
+      description: "Search all notes. Returns matching lines with their file, not whole files.",
       inputSchema: {
         query: z.string().describe("Words to look for"),
         limit: z.number().int().min(1).max(30).optional().describe("Max lines to return (default 8)"),
@@ -80,7 +76,7 @@ export async function createServer(root: string, opts: Options = {}): Promise<Mc
     {
       title: "Remember a fact",
       description:
-        "Save one lasting fact the user told you or decided, as a dated line in the right leaf. Use 'replaces' to swap out a line that is now stale. Leave out 'leaf' when unsure where it belongs: it goes to the inbox. To create a new leaf, give 'leaf', 'branch' and 'description'. Tell the user what you saved.",
+        "Save one lasting fact as a dated line in a note. 'replaces' swaps out a stale line. No 'leaf' = inbox. New note: give leaf, branch and description. Tell the user what you saved.",
       inputSchema: {
         fact: z.string().describe("The fact, one short line, in the user's terms. No date: it is added."),
         leaf: z.string().optional().describe("Leaf name or path, e.g. 'books' or 'People/sam.md'"),

@@ -159,7 +159,10 @@ test("MCP: the door lists its tools and answers through the protocol", async () 
   await Promise.all([server.connect(a), client.connect(b)]);
   const tools = (await client.listTools()).tools.map((t) => t.name).sort();
   assert.deepEqual(tools, ["lg_claim", "lg_handoff", "lg_inbox", "lg_open", "lg_remember", "lg_search", "lg_start"]);
-  assert.match(client.getInstructions() ?? "", /Read this file at the start of every chat/);
+  assert.match(client.getInstructions() ?? "", /Call lg_start/);
+  const start = await client.callTool({ name: "lg_start", arguments: {} });
+  assert.match(start.content[0].text, /Read this file at the start of every chat/);
+  assert.doesNotMatch(start.content[0].text, /mailbox/);
   const res = await client.callTool({ name: "lg_remember", arguments: { fact: "Prefers short answers", leaf: "Me" } });
   assert.match(res.content[0].text, /via Claude/);
   const search = await client.callTool({ name: "lg_search", arguments: { query: "short answers" } });

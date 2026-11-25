@@ -1,0 +1,7 @@
+{
+  "name": "lifegraph-bench",
+  "private": true,
+  "type": "module",
+  "description": "Token benchmark for LifeGraph. Only --exact uses the network (Anthropic token counting).",
+  "optionalDependencies": { "@anthropic-ai/sdk": "^1.14.0" }
+}
