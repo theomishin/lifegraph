@@ -2,7 +2,7 @@
 
 This brief is everything needed to build the LifeGraph website. It is written for a coding agent (Codex) working in this repository. Read it top to bottom before writing code. Where it says **must**, that is a hard rule. Where it says *suggested*, use your judgment.
 
-The source of truth for what the product does is the code and docs on the `mac-v0` branch (PR #2): `README.md`, `PRIVACY.md`, `spec/FORMAT.md`, `install.sh`, `door/src/`. If this brief and the code disagree, the code wins, and the site must not promise anything the code doesn't do.
+The source of truth for what the product does is the code and docs on the `mac-v0` branch (PR #2): `README.md`, `PRIVACY.md`, `spec/FORMAT.md`, `install.sh`, `door/src/`, the fictional demo folder `demo/`, and the token benchmark in `docs/benchmark.md` (run by `bench/run.mjs` over `bench/questions.json`). If this brief and the code disagree, the code wins, and the site must not promise anything the code doesn't do.
 
 ---
 
@@ -63,7 +63,28 @@ Subheadline (pairs with any of them):
 1. **Ownership.** It's a folder of Markdown files. Open it in any editor, change anything, delete anything, back it up, move it. No lock-in, no export button needed.
 2. **Works across rival AIs.** Claude, Codex, Cursor, Gemini CLI, LM Studio connect directly; Muse on the Mac through the mailbox. Tell one AI something and the next one already knows. They can even hand work to each other.
 3. **Privacy.** No servers, no accounts, no telemetry. The door makes no network calls (CI enforces it). Lock any note and no AI ever sees it.
-4. **Token efficiency.** An AI reads the index, then one hub, then one note, a few hundred words instead of your whole life. **Do not state any percentage, multiplier or token count** until the benchmark is published. Describe the mechanism only. Leave a clearly marked placeholder in the code (`<!-- BENCHMARK: add numbers here once docs/benchmark.md exists -->`) where a stat would go.
+4. **Token efficiency.** An AI reads the index, then one hub, then one note, a few hundred words instead of your whole life. The cost of a chat **stays nearly flat as your folder grows**, while pasting the folder grows with every note. Numbers from `docs/benchmark.md` may be used, but only under the rules in section 4.1.
+
+### 4.1 Rules for token numbers (must)
+
+The benchmark ran on the fictional `demo/` folder (43 notes, about 2,700 words) with 20 questions. Its figures, all **estimated** (characters divided by 3.5, not exact model counts):
+
+| | Estimated tokens |
+| --- | --- |
+| Whole folder pasted into a chat | about 4,692 |
+| Door, once per chat (tool list, rules and `lg_start`) | about 1,970 |
+| Door, per question (`lg_search` + `lg_open`) | about 384 |
+| Chat with 1 question through the door | about 2,354, which is 50% less than pasting |
+| Chat with 10 questions through the door | about 5,812 (pasting: 4,692) |
+| Found the note holding the answer | 20 of 20 questions |
+
+Wherever a number appears on the site:
+
+- Label it **estimated**, and say it was measured on the demo folder.
+- Say, close by, that **on a small folder with many questions in one chat, pasting is cheaper**. Do not hide this in a footnote only.
+- The headline claim is **"stays flat as your folder grows"**. Never a fixed multiplier ("5x fewer tokens", "saves 80%") and never a dollar figure. "50% less" may appear only next to "for a one-question chat on the demo folder".
+- "Found the right note 20 of 20 times" may be quoted as is, with "on 20 test questions".
+- Link to `docs/benchmark.md` on GitHub from every place a number appears, so readers can check it and rerun it.
 5. **Always up to date.** AIs replace stale lines instead of piling up history, so the folder says what's true now. You see who changed what from the `(via Claude)` labels.
 
 ## 5. Site structure
@@ -140,7 +161,7 @@ Five cards, icon + heading + two lines each.
 - **You own it.** It's a folder of text files. Read it, edit it, back it up, take it anywhere.
 - **Every AI, one memory.** Tell Claude something on Monday, and Codex knows it on Tuesday.
 - **Private by design.** No servers, no accounts, no tracking. Lock a note and no AI ever sees it.
-- **Only what's needed.** AIs open one small note per question, not your whole history, so less of your life is sent and less context is spent. `<!-- BENCHMARK -->`
+- **Only what's needed.** AIs open one small note per question, not your whole history. The cost stays nearly flat as your folder grows. *(Estimated on the demo folder: a one-question chat used about half the tokens of pasting the folder. [See the benchmark.](docs/benchmark.md))*
 - **Always current.** AIs replace old facts instead of stacking them, and label every change with their name.
 
 ### 6.5 AIs working together
@@ -221,15 +242,49 @@ Buttons: Install on Mac · Star on GitHub
 
 ## 7. Interactive demo (in-browser, no network)
 
-A small widget that shows the "only what's needed" idea. It **must** run entirely in the browser with bundled, fake sample data. No API calls, no AI model, no network requests.
+A widget that shows the "only what's needed" idea using the real search logic and the real benchmark numbers. It **must** run entirely in the browser. No API calls, no AI model, no network requests.
 
-- Sample vault lives in `site/demo/` as Markdown or JSON. It is fictional ("Alex", a made-up person) and must pass `node scripts/check-public.mjs` (no real names, no emails, no phone numbers). Use clearly fake details.
-- Left pane: the folder tree of the sample vault.
-- Top: three or four preset questions as buttons, e.g. "What should I cook tonight?", "When is my sister's birthday?", "What's my current project?", "What's my budget for the trip?".
-- On click, animate the path the door takes: `index.md` highlights, then the branch hub, then one leaf. Show the leaf's relevant lines in a right pane as "what the AI receives".
-- One question should touch a **locked** note (e.g. the budget question touches `Money/`), and the demo shows the door refusing: "This note is locked. The AI is told it exists but can't read it." Check `door/src/` for the exact behaviour and mirror it.
-- A small counter: "Files opened: 3 of 24" and "Words sent: 180 of 6,400", computed live from the sample data. This is illustrative of the sample only. Caption it: *"Counts from this sample folder. Real savings depend on your folder."* Do not turn it into a general claim.
-- Must be keyboard accessible and work without JavaScript showing a static fallback (a screenshot-like rendering of one path).
+### 7.1 Data
+
+- Use the repo's existing **`demo/` folder** ("Maya", a fictional person). Do not write a new sample folder. It already passes `node scripts/check-public.mjs`; update `scripts/check-public.mjs` roots if needed so `demo/` stays covered, and run it in CI.
+- Bundle `demo/` into the site at build time (e.g. a generated JSON of path, frontmatter and body for each note). Do not copy the files by hand, so the demo can't drift from the folder the benchmark used.
+- To show a locked note, mark one note locked **in the site's build step only** (suggested: `Money/investing.md`), not in `demo/` itself, so the benchmark folder is unchanged. Use the door's real refusal text from `door/src/lifegraph.ts`: "`<path>` is locked. The door never shares or edits locked notes. The user can open it themselves."
+
+### 7.2 Search
+
+- The demo's search is a **JavaScript port of `door/src/search.ts`**, the same scoring the door uses. Put it in `site/src/demo/search.js` (or similar) with a header comment naming the source file it ports.
+- Add a build test (run in the site CI workflow) that loads `bench/questions.json` and checks that for all 20 questions the ported search, then opening the top note, lands on the expected `file`. The build fails if any question misses. This keeps the port honest when `search.ts` changes.
+
+### 7.3 Interaction
+
+- Left pane: Maya's folder tree.
+- Top: a text box ("Ask Maya's LifeGraph...") plus preset buttons taken from `bench/questions.json` (pick four or five, e.g. her sister's birthday, Tom's allergy, the onboarding redesign deadline, the rule for big purchases) and one that hits the locked note.
+- On ask, animate the door's path: `index.md` highlights, then the search hits, then the one note it opens. The right pane shows "what the AI receives": the matching lines and the opened note.
+- A locked note shows the refusal text instead of its contents.
+- Keyboard accessible. Without JavaScript, show a static rendering of one question's path.
+
+### 7.4 Token counter
+
+Two horizontal bars, both labelled **"estimated"**:
+
+- **Pasting the whole folder:** about 4,692 tokens, the same for every chat.
+- **Through the door:** about 1,970 per chat plus about 384 per question. It starts at 2,354 for one question and grows by 384 with each question the visitor asks in the demo session.
+
+Show the running totals as numbers next to the bars. Caption: *"Estimated on Maya's demo folder (43 notes). A one-question chat uses about 50% fewer tokens than pasting. On a small folder with many questions in one chat, pasting is cheaper; see the chart below. [Benchmark](docs/benchmark.md)"*. Below the bars: *"The door found the right note in 20 of 20 test questions."*
+
+When the visitor's door total passes the pasting bar (around question 7), don't hide it. Show a short note: *"On a folder this small, pasting wins after a handful of questions. Bigger folders change that."*
+
+### 7.5 Projection chart
+
+A small line chart under the counter, drawn as inline SVG (no chart library loaded from a CDN).
+
+- X axis: folder size in words, from about 1,000 to 30,000.
+- Y axis: estimated tokens for a one-question chat.
+- **Pasting** line: rises in proportion to folder size, scaled from the benchmark (about 4,692 tokens at 2,700 words).
+- **Door** line: nearly flat, starting at about 2,354. Model a gentle rise only for the growing index and hub lists (suggested: the index and hubs grow by one line per new note, about 15 tokens each, at roughly 60 words per note). State this assumption in a caption.
+- Mark Maya's demo folder as a labelled dot on both lines ("Demo folder: 2,700 words").
+- Title: **"Pasting grows with your folder. The door stays flat."** Caption: *"Projection from estimated benchmark figures, not a measurement of real folders. Assumes one question per chat."*
+- Accessible: a visually hidden table with the plotted points, and both lines distinguishable without colour (solid vs dashed, direct labels).
 
 ## 8. FAQ
 
@@ -257,7 +312,7 @@ Not yet. It's Mac only for now. Your folder syncs to your iPhone and you can add
 Those memories live inside one app, on that company's servers, and you can only partly see or edit them. LifeGraph is one set of plain files you own, and every AI you use shares it.
 
 **How does it save tokens?**
-Instead of pasting everything about you into every chat, the AI reads a short index, then one branch, then one note. Most questions need a few hundred words, not your whole history. We're measuring the exact difference and will publish the numbers. *(Codex: keep this answer number-free.)*
+Instead of pasting everything about you into every chat, the AI reads a short index, then searches and opens the one note it needs. That cost stays nearly flat as your folder grows, while pasting grows with every note. On our fictional demo folder (43 notes), a one-question chat used an estimated 50% fewer tokens than pasting, and the door found the right note in 20 of 20 test questions. On a small folder with many questions in one chat, pasting is cheaper. [Full benchmark](docs/benchmark.md), which you can rerun yourself.
 
 **What's MCP?**
 Model Context Protocol, the open standard AI apps use to connect to local tools and data. The door is an MCP server. You don't need to know anything about it; the installer sets it up.
@@ -291,7 +346,7 @@ Yes. The file format is a short public spec, CC0. See `/spec/`.
 ### Stack and hosting
 
 - Static site in `site/` at the repo root. *Suggested:* Astro (static output). Plain HTML/CSS with a little vanilla JS is also fine. No React needed.
-- Deploy with GitHub Actions to GitHub Pages (`.github/workflows/site.yml`, using `actions/upload-pages-artifact` and `actions/deploy-pages`). Build only on changes to `site/**` or `docs/website-brief.md`.
+- Deploy with GitHub Actions to GitHub Pages (`.github/workflows/site.yml`, using `actions/upload-pages-artifact` and `actions/deploy-pages`). Build on changes to `site/**`, `demo/**`, `door/src/search.ts`, `bench/questions.json`, `docs/benchmark.md`, `PRIVACY.md`, `spec/**` or `docs/website-brief.md`. `demo/`, `bench/` and `docs/benchmark.md` arrive with PR #2, so build after it is merged.
 - Base URL: assume `https://theomishin.github.io/lifegraph/` for now, configured in one place so a custom domain can be swapped in later.
 
 ### Privacy rules (must; these are promises made in PRIVACY.md)
@@ -299,7 +354,7 @@ Yes. The file format is a short public spec, CC0. See `/spec/`.
 - **No third-party requests at all.** No Google Fonts, no CDNs, no analytics, no embedded videos, no external images, no GitHub star badges loaded from shields.io. Self-host fonts or use the system font stack.
 - **No cookies, no localStorage** except, at most, remembering light/dark choice.
 - Add a CI check (in the site workflow) that fails if built HTML/CSS/JS contains `http://` or `https://` URLs in `src=`, `href` for stylesheets, `@import`, or `fetch(`, other than links (`<a href>`) to github.com, nodejs.org and modelcontextprotocol.io.
-- `site/demo/` data must pass `node scripts/check-public.mjs`. Run it in CI.
+- `demo/` must pass `node scripts/check-public.mjs`. Run it in CI.
 
 ### Look and feel
 
@@ -327,7 +382,7 @@ Yes. The file format is a short public spec, CC0. See `/spec/`.
 
 ## 10. Things the site must never say
 
-- Any token, cost or speed number before the benchmark is published.
+- Any token number without "estimated" and the small-folder caveat next to it, any fixed multiplier ("5x fewer tokens"), any percentage not tied to the one-question demo chat, or any cost or speed figure.
 - That it works on Windows, Linux, iPhone or Android today.
 - That ChatGPT connects automatically.
 - That nothing ever leaves your Mac (iCloud sync and what an AI reads do).
@@ -339,9 +394,10 @@ Yes. The file format is a short public spec, CC0. See `/spec/`.
 
 - [ ] `site/` builds with one command and deploys to GitHub Pages from `main`.
 - [ ] All landing sections from section 5 exist, with the copy from section 6.
-- [ ] Demo works offline, uses only `site/demo/` data, and passes `check-public.mjs`.
+- [ ] Demo works offline, is built from `demo/`, and `check-public.mjs` passes.
+- [ ] The search port passes the build test on all 20 questions in `bench/questions.json`.
+- [ ] Token counter and projection chart show "estimated", link to `docs/benchmark.md`, and include the small-folder caveat.
 - [ ] `/install/`, `/how-it-works/`, `/privacy/`, `/faq/`, `/spec/`, `404` exist.
 - [ ] No third-party requests (checked in CI), no cookies, no analytics.
 - [ ] Lighthouse 95+ in all four categories, light and dark.
 - [ ] Nothing from section 10 appears anywhere.
-- [ ] Benchmark placeholders left as HTML comments where numbers will go.
