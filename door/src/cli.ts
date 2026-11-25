@@ -217,6 +217,27 @@ async function doctor(): Promise<boolean> {
       connected++;
     }
   }
+  // Claude Code keeps user-scope servers in ~/.claude.json.
+  let hasClaudeCode = existsSync(path.join(home, ".claude.json"));
+  try {
+    execFileSync("claude", ["--version"], { stdio: "ignore" });
+    hasClaudeCode = true;
+  } catch {
+    /* not on PATH */
+  }
+  if (hasClaudeCode) {
+    let listed = false;
+    try {
+      const cfg = JSON.parse(await fs.readFile(path.join(home, ".claude.json"), "utf8"));
+      listed = Boolean(cfg?.mcpServers?.lifegraph);
+    } catch {
+      /* unreadable */
+    }
+    if (listed) {
+      pass("Claude Code connected");
+      connected++;
+    } else warn("Claude Code is installed but not connected", "run: lifegraph connect   (or: claude mcp add --scope user lifegraph -- lifegraph)");
+  }
   if (!connected) warn("No AI apps connected yet", "install Claude Desktop, Codex or Cursor, then run: lifegraph connect");
 
   // Mailbox: a real round trip through the background agent.

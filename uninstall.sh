@@ -17,5 +17,8 @@ try { const s = fs.readFileSync(t, "utf8"); const n = s.replace(/\n?\[mcp_server
 '
 fi
 command -v claude >/dev/null && claude mcp remove --scope user lifegraph >/dev/null 2>&1
+for rc in "$HOME/.zshrc" "$HOME/.bash_profile"; do
+  [ -f "$rc" ] && grep -qF "# added by LifeGraph" "$rc" && sed -i '' '/# added by LifeGraph/d' "$rc"
+done
 rm -rf "$APP"
 echo "LifeGraph is uninstalled. Your notes are still in ~/LifeGraph."
