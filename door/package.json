@@ -1,0 +1,46 @@
+{
+  "name": "lifegraph-mcp",
+  "version": "0.1.0",
+  "description": "The LifeGraph door: a local MCP server that lets every AI read and write one Markdown folder about you. No network, no accounts.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "lifegraph": "dist/cli.js"
+  },
+  "main": "dist/server.js",
+  "files": [
+    "dist",
+    "template",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/theomishin/lifegraph.git",
+    "directory": "door"
+  },
+  "homepage": "https://github.com/theomishin/lifegraph",
+  "keywords": [
+    "mcp",
+    "memory",
+    "markdown",
+    "obsidian",
+    "claude",
+    "local-first"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-template.mjs",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "check:no-network": "node scripts/no-network.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}

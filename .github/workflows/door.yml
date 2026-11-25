@@ -1,0 +1,29 @@
+name: door
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    defaults:
+      run:
+        working-directory: door
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: No network code
+        run: npm run check:no-network
+      - run: npm test
+      - name: Installer syntax
+        run: bash -n ../install.sh && bash -n ../uninstall.sh
+      - name: Token benchmark (demo folder, estimated)
+        run: node ../bench/run.mjs

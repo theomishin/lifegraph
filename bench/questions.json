@@ -1,0 +1,22 @@
+[
+  {"q": "What is my sister's name and when is her birthday?", "file": "People/sister-elin.md"},
+  {"q": "When do I fly to Gothenburg for Christmas?", "file": "Life/travel.md"},
+  {"q": "What pace was my longest run?", "file": "Health/running.md"},
+  {"q": "What is the deadline for the onboarding redesign?", "file": "Projects/onboarding-redesign.md"},
+  {"q": "Who is my manager and how does he like updates?", "file": "People/jonas.md"},
+  {"q": "What level is my Portuguese and when is the exam?", "file": "Learning/portuguese.md"},
+  {"q": "When is my next physio appointment?", "file": "Health/physio.md"},
+  {"q": "What is Tom allergic to?", "file": "People/partner-tom.md"},
+  {"q": "When does my lease renew?", "file": "Life/home.md"},
+  {"q": "What is my rule for big purchases?", "file": "Money/budget.md"},
+  {"q": "What am I making in ceramics class?", "file": "Projects/ceramics.md"},
+  {"q": "When is Joana's wedding?", "file": "People/friend-joana.md"},
+  {"q": "What time should I avoid booking calls?", "file": "Me/Me.md"},
+  {"q": "Which chapter of the TypeScript handbook am I on?", "file": "Learning/typescript.md"},
+  {"q": "What did the first usability round find?", "file": "Work/current-job.md"},
+  {"q": "When is my book club?", "file": "Interests/books.md"},
+  {"q": "What iron issue did my blood test show?", "file": "Health/food.md"},
+  {"q": "Who is my mentor and when do we talk?", "file": "Work/career-plans.md"},
+  {"q": "What jacket do I need?", "file": "Interests/style.md"},
+  {"q": "When do I invest each month?", "file": "Money/investing.md"}
+]
