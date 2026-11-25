@@ -80,3 +80,4 @@ jobs:
           if ($LASTEXITCODE -eq 0) { Write-Error 'task still there'; exit 1 }
           if (-not (Test-Path "$HOME\LifeGraph\index.md")) { Write-Error 'notes were removed'; exit 1 }
           if (Test-Path "$HOME\.lifegraph-app") { Write-Error 'app folder still there'; exit 1 }
+          exit 0  # the schtasks query above is meant to fail, and its exit code would end the step
