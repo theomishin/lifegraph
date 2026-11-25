@@ -22,13 +22,13 @@ Restart your AI apps and tell each one: *"Read my LifeGraph and fill it from wha
 
 Already have a `~/LifeGraph` folder? The installer uses it as is. Add `--icloud` to move it into iCloud Drive: `curl -fsSL .../install.sh | bash -s -- --icloud`.
 
-To remove it: `bash ~/.lifegraph-app/src/uninstall.sh`. Your notes stay.
+If something doesn't work, run `~/.lifegraph-app/bin/lifegraph doctor`. To remove it: `bash ~/.lifegraph-app/src/uninstall.sh`. Your notes stay.
 
 ## How it works
 
 - **The folder.** `index.md` lists a few branches and the rules every AI follows. Each branch has a hub listing short notes. An AI reads the index, then one hub, then one note: a few hundred words instead of your whole life.
 - **The door** (`door/`) is a local MCP server. Apps start it themselves; it makes no network calls. Its tools: `lg_start`, `lg_open`, `lg_search`, `lg_remember`, `lg_inbox`, `lg_handoff`, `lg_claim`.
-- **Locked notes.** `lifegraph lock Money` and the door never shows, searches or edits that note.
+- **Locked notes.** `lifegraph lock <note>` and the door never shows, searches or edits that note. Locking a hub (`lifegraph lock Money`) locks its whole branch.
 - **Labels.** Every change ends with which AI made it, like `(via Claude)`, so you can see who wrote what.
 - **Inbox.** `inbox/` takes anything that isn't filed yet, including lines you add from your phone in `inbox/phone.md`. The next AI on the Mac files them away.
 - **Handoff.** One AI writes a handoff note in `handoff/` (goal, what's done, next step); another picks it up. While an AI is rewriting a note it claims it, and other AIs' changes go to the inbox instead, so two AIs never edit one note at once.
@@ -41,6 +41,7 @@ lifegraph status          what's in your LifeGraph, what's locked, open handoffs
 lifegraph lock <note>     lock a note (unlock to undo)
 lifegraph card            a short summary of you to paste into apps with no connection
 lifegraph connect         reconnect your apps (after installing a new one)
+lifegraph doctor          check everything works and say how to fix what doesn't
 ```
 
 It lives at `~/.lifegraph-app/bin/lifegraph`.

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, cpSync, writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { LifeGraph, label } from "../dist/lifegraph.js";
 import { processMailbox } from "../dist/mailbox.js";
@@ -123,7 +124,7 @@ test("mailbox: an ask file gets a reply file, with no locked content", async () 
   writeFileSync(path.join(dir, "mailbox/ask-muse.md"), "from: Muse\nWhat book am I reading?\nremember: Likes long novels\n");
   writeFileSync(path.join(dir, "mailbox/ask-2.md"), "open: budget\n");
   const lg = new LifeGraph(dir, { now: NOW });
-  assert.equal(await processMailbox(lg), 2);
+  assert.equal(await processMailbox(lg, 0), 2);
   const reply = readFileSync(path.join(dir, "mailbox/reply-muse.md"), "utf8");
   assert.match(reply, /Middlemarch/);
   assert.match(reply, /Likes long novels \(via Muse\)/);
@@ -168,4 +169,63 @@ test("MCP: the door lists its tools and answers through the protocol", async () 
   const search = await client.callTool({ name: "lg_search", arguments: { query: "short answers" } });
   assert.match(search.content[0].text, /Me\/Me\.md/);
   await client.close();
+});
+
+test("locking a hub locks its whole branch", async () => {
+  const dir = vault();
+  writeFileSync(path.join(dir, "Health/Health.md"), "---\nlocked: true\n---\n# Health\n\n- [[sleep]] — sleep\n");
+  writeFileSync(path.join(dir, "Health/sleep.md"), "# Sleep\n\n- Sleeps badly before exams.\n");
+  const lg = new LifeGraph(dir, { now: NOW });
+  assert.match(await lg.open("sleep"), /locked/);
+  assert.equal((await lg.search("sleeps badly exams")).filter((h) => h.file.startsWith("Health/")).length, 0);
+  assert.match(await lg.remember({ fact: "x", leaf: "sleep" }, "claude-ai"), /locked/);
+  assert.equal((await lg.vault.read("Health/sleep.md")).locked, true);
+});
+
+test("several door processes writing at once lose nothing", async () => {
+  const dir = vault();
+  const script = `
+    import { LifeGraph } from ${JSON.stringify(new URL("../dist/lifegraph.js", import.meta.url).href)};
+    const lg = new LifeGraph(process.argv[1]);
+    for (let i = 0; i < 5; i++) await lg.remember({ fact: "p" + process.argv[2] + "-" + i, leaf: "books" }, "app" + process.argv[2]);
+  `;
+  const run = (n) =>
+    new Promise((res, rej) => {
+      const c = spawn(process.execPath, ["--input-type=module", "-e", script, dir, String(n)], { stdio: "inherit" });
+      c.on("exit", (code) => (code === 0 ? res() : rej(new Error("child failed " + code))));
+    });
+  await Promise.all([1, 2, 3, 4].map(run));
+  const raw = readFileSync(path.join(dir, "Interests/books.md"), "utf8");
+  for (let p = 1; p <= 4; p++) for (let i = 0; i < 5; i++) assert.match(raw, new RegExp(`p${p}-${i} `));
+  assert.equal(existsSync(path.join(dir, ".lifegraph/write.lock")), false);
+});
+
+test("a stale lock left by a crash is taken over", async () => {
+  const dir = vault();
+  mkdirSync(path.join(dir, ".lifegraph"), { recursive: true });
+  const lock = path.join(dir, ".lifegraph/write.lock");
+  writeFileSync(lock, "999999");
+  const old = new Date(Date.now() - 60_000);
+  (await import("node:fs")).utimesSync(lock, old, old);
+  const lg = new LifeGraph(dir, { now: NOW });
+  assert.match(await lg.remember({ fact: "after crash", leaf: "books" }, "claude-ai"), /Added/);
+});
+
+test("mailbox waits for half-written asks and refuses huge ones", async () => {
+  const dir = vault();
+  mkdirSync(path.join(dir, "mailbox"), { recursive: true });
+  writeFileSync(path.join(dir, "mailbox/ask-new.md"), "open: books");
+  writeFileSync(path.join(dir, "mailbox/ask-big.md"), "x".repeat(70 * 1024));
+  const lg = new LifeGraph(dir, { now: NOW });
+  assert.equal(await processMailbox(lg, 60_000), 0); // both too fresh
+  assert.equal(await processMailbox(lg, 0), 2);
+  assert.match(readFileSync(path.join(dir, "mailbox/reply-big.md"), "utf8"), /too large/);
+  assert.match(readFileSync(path.join(dir, "mailbox/reply-new.md"), "utf8"), /Middlemarch/);
+});
+
+test("Windows line endings are handled", async () => {
+  const dir = vault();
+  writeFileSync(path.join(dir, "Interests/films.md"), "---\r\nlocked: true\r\n---\r\n# Films\r\n\r\n- Loves Ghibli.\r\n");
+  const lg = new LifeGraph(dir, { now: NOW });
+  assert.match(await lg.open("films"), /locked/);
 });

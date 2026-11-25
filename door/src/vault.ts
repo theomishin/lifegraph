@@ -1,6 +1,7 @@
 // The vault: a folder of Markdown files. Everything here is plain filesystem
 // work. This module (and the whole server) never touches the network.
 import { promises as fs, realpathSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 export interface Note {
@@ -70,6 +71,9 @@ export class Vault {
       }
     };
     await walk(this.root);
+    // A locked hub (Money/Money.md) locks its whole branch folder.
+    const lockedDirs = out.filter((n) => n.locked && isHub(n.rel)).map((n) => path.posix.dirname(n.rel) + "/");
+    for (const n of out) if (!n.locked && lockedDirs.some((d) => n.rel.startsWith(d))) n.locked = true;
     return out.sort((a, b) => a.rel.localeCompare(b.rel));
   }
 
@@ -91,7 +95,18 @@ export class Vault {
   }
 
   async read(rel: string): Promise<Note> {
-    return this.readAbs(this.resolve(rel));
+    const note = await this.readAbs(this.resolve(rel));
+    if (!note.locked) {
+      const top = note.rel.split("/")[0];
+      if (note.rel.includes("/") && note.rel !== `${top}/${top}.md`) {
+        try {
+          if ((await this.readAbs(this.resolve(`${top}/${top}.md`))).locked) note.locked = true;
+        } catch {
+          /* no hub */
+        }
+      }
+    }
+    return note;
   }
 
   async exists(rel: string): Promise<boolean> {
@@ -119,7 +134,8 @@ export class Vault {
     const abs = this.resolve(rel);
     await fs.mkdir(path.dirname(abs), { recursive: true });
     // Write to a temp file then rename, so a sync tool never sees half a file.
-    const tmp = `${abs}.lifegraph-tmp`;
+    // Unique temp name: several apps may each run their own door at the same time.
+    const tmp = `${abs}.${process.pid}-${randomBytes(4).toString("hex")}.lifegraph-tmp`;
     await fs.writeFile(tmp, content, "utf8");
     await fs.rename(tmp, abs);
   }
@@ -132,6 +148,57 @@ export class Vault {
   stateDir(): string {
     return path.join(this.root, ".lifegraph");
   }
+
+  private depth = 0;
+
+  /**
+   * Run fn while holding the vault's write lock. Each app starts its own door process, and the
+   * mailbox is another one, so read-modify-write must be serialised across processes.
+   * Re-entrant within one process. A lock older than 15 seconds is treated as left behind by a crash.
+   */
+  async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.depth > 0) {
+      this.depth++;
+      try {
+        return await fn();
+      } finally {
+        this.depth--;
+      }
+    }
+    await fs.mkdir(this.stateDir(), { recursive: true });
+    const lock = path.join(this.stateDir(), "write.lock");
+    const deadline = Date.now() + 8000;
+    for (;;) {
+      try {
+        const h = await fs.open(lock, "wx");
+        await h.writeFile(String(process.pid));
+        await h.close();
+        break;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+        try {
+          const st = await fs.stat(lock);
+          if (Date.now() - st.mtimeMs > 15000) await fs.unlink(lock).catch(() => undefined);
+        } catch {
+          /* gone already */
+        }
+        if (Date.now() > deadline) throw new Error("LifeGraph is busy (another app is writing). Try again in a moment.");
+        await new Promise((r) => setTimeout(r, 20 + Math.random() * 30));
+      }
+    }
+    this.depth = 1;
+    try {
+      return await fn();
+    } finally {
+      this.depth = 0;
+      await fs.unlink(lock).catch(() => undefined);
+    }
+  }
+}
+
+function isHub(rel: string): boolean {
+  const parts = rel.split("/");
+  return parts.length === 2 && parts[1] === `${parts[0]}.md`;
 }
 
 /** The "Rules for ..." section of index.md, used as the server's instructions. */

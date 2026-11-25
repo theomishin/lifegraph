@@ -69,8 +69,11 @@ export class LifeGraph {
     const inbox = await this.inboxLines();
     const claims = Object.entries(await this.claims()).filter(([, c]) => c.by !== label(client));
 
-    seen[client] = this.now().getTime();
-    await this.writeState("seen.json", seen);
+    await this.vault.withLock(async () => {
+      const latest = await this.readState<Record<string, number>>("seen.json", {});
+      latest[client] = this.now().getTime();
+      await this.writeState("seen.json", latest);
+    });
 
     // The mailbox section is for file-only apps; apps using the door don't need it.
     const indexText = index ? index.body.replace(/^##\s+For apps that can only[\s\S]*?(?=^##\s|(?![\s\S]))/m, "").trim() : "";
@@ -107,49 +110,51 @@ export class LifeGraph {
     args: { fact: string; leaf?: string; replaces?: string; branch?: string; description?: string },
     client = "unknown",
   ): Promise<string> {
-    const who = label(client);
-    const fact = args.fact.replace(/\s*\n\s*/g, " ").trim();
-    if (!fact) throw new Error("fact is empty");
-    const line = `- ${today(this.now())}: ${fact} (via ${who})`;
+    return this.vault.withLock(async () => {
+      const who = label(client);
+      const fact = args.fact.replace(/\s*\n\s*/g, " ").trim();
+      if (!fact) throw new Error("fact is empty");
+      const line = `- ${today(this.now())}: ${fact} (via ${who})`;
 
-    if (!args.leaf) {
-      await this.appendLine("inbox/inbox.md", line, who, "# Inbox\nBack to [[index]].\n");
-      return `Added to inbox/inbox.md: ${line}`;
-    }
-
-    const note = await this.vault.find(args.leaf);
-    if (!note) {
-      if (!args.branch) {
-        return `No note named "${args.leaf}". To create it, call again with branch (the hub it belongs under, e.g. "People") and a one-line description. Or leave out leaf to put the fact in the inbox.`;
+      if (!args.leaf) {
+        await this.appendLine("inbox/inbox.md", line, who, "# Inbox\nBack to [[index]].\n");
+        return `Added to inbox/inbox.md: ${line}`;
       }
-      return this.createLeaf(args.leaf, args.branch, args.description ?? "", line, who);
-    }
-    if (note.locked) return this.locked(note);
 
-    const claim = (await this.claims())[note.rel];
-    if (claim && claim.by !== who) {
-      await this.appendLine("inbox/inbox.md", `${line} [for ${note.rel}]`, who, "# Inbox\nBack to [[index]].\n");
-      return `${note.rel} is being edited by ${claim.by}${claim.task ? ` (${claim.task})` : ""}, so the fact went to the inbox instead and will be filed later: ${line}`;
-    }
+      const note = await this.vault.find(args.leaf);
+      if (!note) {
+        if (!args.branch) {
+          return `No note named "${args.leaf}". To create it, call again with branch (the hub it belongs under, e.g. "People") and a one-line description. Or leave out leaf to put the fact in the inbox.`;
+        }
+        return this.createLeaf(args.leaf, args.branch, args.description ?? "", line, who);
+      }
+      if (note.locked) return this.locked(note);
 
-    let raw = note.raw;
-    let result: string;
-    if (args.replaces) {
-      const lines = raw.split("\n");
-      const matches = lines.map((l, i) => (l.includes(args.replaces!) ? i : -1)).filter((i) => i >= 0);
-      if (matches.length === 0) return `Nothing in ${note.rel} contains "${args.replaces}". Nothing was changed.`;
-      if (matches.length > 1) return `"${args.replaces}" matches ${matches.length} lines in ${note.rel}; give more of the line. Nothing was changed.`;
-      const old = lines[matches[0]];
-      lines[matches[0]] = line;
-      raw = lines.join("\n");
-      result = `Replaced in ${note.rel}:\n  was: ${old.trim()}\n  now: ${line}`;
-    } else {
-      raw = raw.replace(/\s*$/, "\n") + line + "\n";
-      result = `Added to ${note.rel}: ${line}`;
-    }
-    raw = setFrontmatter(setFrontmatter(raw, "updated", today(this.now())), "updated_by", who);
-    await this.vault.write(note.rel, raw);
-    return result;
+      const claim = (await this.claims())[note.rel];
+      if (claim && claim.by !== who) {
+        await this.appendLine("inbox/inbox.md", `${line} [for ${note.rel}]`, who, "# Inbox\nBack to [[index]].\n");
+        return `${note.rel} is being edited by ${claim.by}${claim.task ? ` (${claim.task})` : ""}, so the fact went to the inbox instead and will be filed later: ${line}`;
+      }
+
+      let raw = note.raw;
+      let result: string;
+      if (args.replaces) {
+        const lines = raw.split("\n");
+        const matches = lines.map((l, i) => (l.includes(args.replaces!) ? i : -1)).filter((i) => i >= 0);
+        if (matches.length === 0) return `Nothing in ${note.rel} contains "${args.replaces}". Nothing was changed.`;
+        if (matches.length > 1) return `"${args.replaces}" matches ${matches.length} lines in ${note.rel}; give more of the line. Nothing was changed.`;
+        const old = lines[matches[0]];
+        lines[matches[0]] = line;
+        raw = lines.join("\n");
+        result = `Replaced in ${note.rel}:\n  was: ${old.trim()}\n  now: ${line}`;
+      } else {
+        raw = raw.replace(/\s*$/, "\n") + line + "\n";
+        result = `Added to ${note.rel}: ${line}`;
+      }
+      raw = setFrontmatter(setFrontmatter(raw, "updated", today(this.now())), "updated_by", who);
+      await this.vault.write(note.rel, raw);
+      return result;
+    });
   }
 
   private async createLeaf(leaf: string, branch: string, description: string, line: string, who: string): Promise<string> {
@@ -193,25 +198,27 @@ export class LifeGraph {
 
   /** Remove lines that have been filed. Matches whole lines exactly; deletes emptied conflict copies. */
   async inboxDone(lines: string[]): Promise<string> {
-    const wanted = new Set(lines.map((l) => l.trim()));
-    const removed = new Set<string>();
-    const files = new Set((await this.inboxLines()).filter((l) => wanted.has(l.text)).map((l) => l.file));
-    for (const file of files) {
-      const note = await this.vault.read(file);
-      const kept = note.raw.split("\n").filter((l) => {
-        if (wanted.has(l.trim())) {
-          removed.add(l.trim());
-          return false;
-        }
-        return true;
-      });
-      const remaining = kept.join("\n");
-      const isConflictCopy = /^inbox\/phone .+\.md$/.test(file);
-      if (isConflictCopy && !/^\s*-\s+\S/m.test(splitFrontmatter(remaining).body)) await this.vault.remove(file);
-      else await this.vault.write(file, remaining);
-    }
-    const missing = [...wanted].filter((w) => !removed.has(w));
-    return `Removed ${removed.size} line(s) from the inbox.${missing.length ? ` Not found (already removed?): ${missing.join(" | ")}` : ""}`;
+    return this.vault.withLock(async () => {
+      const wanted = new Set(lines.map((l) => l.trim()));
+      const removed = new Set<string>();
+      const files = new Set((await this.inboxLines()).filter((l) => wanted.has(l.text)).map((l) => l.file));
+      for (const file of files) {
+        const note = await this.vault.read(file);
+        const kept = note.raw.split("\n").filter((l) => {
+          if (wanted.has(l.trim())) {
+            removed.add(l.trim());
+            return false;
+          }
+          return true;
+        });
+        const remaining = kept.join("\n");
+        const isConflictCopy = /^inbox\/phone .+\.md$/.test(file);
+        if (isConflictCopy && !/^\s*-\s+\S/m.test(splitFrontmatter(remaining).body)) await this.vault.remove(file);
+        else await this.vault.write(file, remaining);
+      }
+      const missing = [...wanted].filter((w) => !removed.has(w));
+      return `Removed ${removed.size} line(s) from the inbox.${missing.length ? ` Not found (already removed?): ${missing.join(" | ")}` : ""}`;
+    });
   }
 
   // ---------- handoff and claims ----------
@@ -229,33 +236,37 @@ export class LifeGraph {
     card: { name: string; goal: string; done?: string; next: string; questions?: string; notes?: string[] },
     client = "unknown",
   ): Promise<string> {
-    const who = label(client);
-    const slug = slugify(card.name);
-    if (!slug) throw new Error("name is empty");
-    const rel = `handoff/${slug}.md`;
-    const body = [
-      `---\nupdated: ${today(this.now())}\nupdated_by: ${who}\n---`,
-      `# ${card.name}\nPart of [[handoff]].`,
-      `## Goal\n${card.goal}`,
-      `## Done so far\n${card.done || "Nothing yet."}`,
-      `## Next step\n${card.next}`,
-      `## Open questions\n${card.questions || "None."}`,
-      `## Notes it touches\n${card.notes?.length ? card.notes.map((n) => `- ${n}`).join("\n") : "None listed."}`,
-      `## From\n${who}, ${today(this.now())}`,
-      `## Status\nopen`,
-    ].join("\n\n");
-    const existed = await this.vault.exists(rel);
-    await this.vault.write(rel, body + "\n");
-    if (!existed && (await this.vault.exists("handoff/handoff.md"))) await this.appendLine("handoff/handoff.md", `- [[${slug}]] — ${card.goal.split("\n")[0]}`, who);
-    return `${existed ? "Updated" : "Wrote"} ${rel}. Another AI can pick it up with lg_handoff read "${slug}".`;
+    return this.vault.withLock(async () => {
+      const who = label(client);
+      const slug = slugify(card.name);
+      if (!slug) throw new Error("name is empty");
+      const rel = `handoff/${slug}.md`;
+      const body = [
+        `---\nupdated: ${today(this.now())}\nupdated_by: ${who}\n---`,
+        `# ${card.name}\nPart of [[handoff]].`,
+        `## Goal\n${card.goal}`,
+        `## Done so far\n${card.done || "Nothing yet."}`,
+        `## Next step\n${card.next}`,
+        `## Open questions\n${card.questions || "None."}`,
+        `## Notes it touches\n${card.notes?.length ? card.notes.map((n) => `- ${n}`).join("\n") : "None listed."}`,
+        `## From\n${who}, ${today(this.now())}`,
+        `## Status\nopen`,
+      ].join("\n\n");
+      const existed = await this.vault.exists(rel);
+      await this.vault.write(rel, body + "\n");
+      if (!existed && (await this.vault.exists("handoff/handoff.md"))) await this.appendLine("handoff/handoff.md", `- [[${slug}]] — ${card.goal.split("\n")[0]}`, who);
+      return `${existed ? "Updated" : "Wrote"} ${rel}. Another AI can pick it up with lg_handoff read "${slug}".`;
+    });
   }
 
   async handoffClose(name: string, client = "unknown"): Promise<string> {
-    const note = await this.vault.find(name.startsWith("handoff/") ? name : `handoff/${slugify(name)}`);
-    if (!note || !note.rel.startsWith("handoff/")) return `No handoff note named "${name}".`;
-    const raw = note.raw.replace(/## Status\n[^\n]*/, "## Status\ndone");
-    await this.vault.write(note.rel, setFrontmatter(setFrontmatter(raw, "updated", today(this.now())), "updated_by", label(client)));
-    return `Marked ${note.rel} as done.`;
+    return this.vault.withLock(async () => {
+      const note = await this.vault.find(name.startsWith("handoff/") ? name : `handoff/${slugify(name)}`);
+      if (!note || !note.rel.startsWith("handoff/")) return `No handoff note named "${name}".`;
+      const raw = note.raw.replace(/## Status\n[^\n]*/, "## Status\ndone");
+      await this.vault.write(note.rel, setFrontmatter(setFrontmatter(raw, "updated", today(this.now())), "updated_by", label(client)));
+      return `Marked ${note.rel} as done.`;
+    });
   }
 
   /** Active claims by note path. Expired claims are dropped. */
@@ -267,50 +278,54 @@ export class LifeGraph {
 
   /** Say "I am editing these notes" so other AIs write to the inbox instead of the same note. */
   async claim(refs: string[], client = "unknown", task?: string): Promise<string> {
-    const who = label(client);
-    const all = await this.claims();
-    const got: string[] = [];
-    const busy: string[] = [];
-    for (const ref of refs) {
-      const note = await this.vault.find(ref);
-      if (!note) {
-        busy.push(`${ref} (no such note)`);
-        continue;
+    return this.vault.withLock(async () => {
+      const who = label(client);
+      const all = await this.claims();
+      const got: string[] = [];
+      const busy: string[] = [];
+      for (const ref of refs) {
+        const note = await this.vault.find(ref);
+        if (!note) {
+          busy.push(`${ref} (no such note)`);
+          continue;
+        }
+        if (note.locked) {
+          busy.push(`${note.rel} (locked)`);
+          continue;
+        }
+        const c = all[note.rel];
+        if (c && c.by !== who) {
+          busy.push(`${note.rel} (${c.by} is editing it)`);
+          continue;
+        }
+        all[note.rel] = { by: who, task, until: this.now().getTime() + this.claimMs };
+        got.push(note.rel);
       }
-      if (note.locked) {
-        busy.push(`${note.rel} (locked)`);
-        continue;
-      }
-      const c = all[note.rel];
-      if (c && c.by !== who) {
-        busy.push(`${note.rel} (${c.by} is editing it)`);
-        continue;
-      }
-      all[note.rel] = { by: who, task, until: this.now().getTime() + this.claimMs };
-      got.push(note.rel);
-    }
-    await this.writeState("claims.json", all);
-    return [
-      got.length ? `You are now editing: ${got.join(", ")} (for ${this.claimMs / 60_000} minutes; claim again to extend, release when done).` : "",
-      busy.length ? `Not available: ${busy.join(", ")}.` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
+      await this.writeState("claims.json", all);
+      return [
+        got.length ? `You are now editing: ${got.join(", ")} (for ${this.claimMs / 60_000} minutes; claim again to extend, release when done).` : "",
+        busy.length ? `Not available: ${busy.join(", ")}.` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    });
   }
 
   async release(client = "unknown", refs?: string[]): Promise<string> {
-    const who = label(client);
-    const all = await this.claims();
-    const targets = refs?.length ? await Promise.all(refs.map(async (r) => (await this.vault.find(r))?.rel)) : undefined;
-    let n = 0;
-    for (const [rel, c] of Object.entries(all)) {
-      if (c.by === who && (!targets || targets.includes(rel))) {
-        delete all[rel];
-        n++;
+    return this.vault.withLock(async () => {
+      const who = label(client);
+      const all = await this.claims();
+      const targets = refs?.length ? await Promise.all(refs.map(async (r) => (await this.vault.find(r))?.rel)) : undefined;
+      let n = 0;
+      for (const [rel, c] of Object.entries(all)) {
+        if (c.by === who && (!targets || targets.includes(rel))) {
+          delete all[rel];
+          n++;
+        }
       }
-    }
-    await this.writeState("claims.json", all);
-    return `Released ${n} note(s).`;
+      await this.writeState("claims.json", all);
+      return `Released ${n} note(s).`;
+    });
   }
 
   // ---------- identity card ----------
@@ -338,7 +353,10 @@ export class LifeGraph {
 
   async writeState(file: string, value: unknown): Promise<void> {
     await fs.mkdir(this.vault.stateDir(), { recursive: true });
-    await fs.writeFile(path.join(this.vault.stateDir(), file), JSON.stringify(value, null, 2));
+    const target = path.join(this.vault.stateDir(), file);
+    const tmp = `${target}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(value, null, 2));
+    await fs.rename(tmp, target);
   }
 }
 

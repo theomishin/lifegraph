@@ -13,6 +13,7 @@ import path from "node:path";
 import { LifeGraph } from "./lifegraph.js";
 
 export const MAILBOX = "mailbox";
+const MAX_ASK_BYTES = 64 * 1024;
 
 export async function answer(lg: LifeGraph, ask: string): Promise<string> {
   const lines = ask.split("\n").map((l) => l.trim()).filter((l) => l && !/^#/.test(l) && l !== "---");
@@ -64,7 +65,7 @@ function formatHits(hits: { file: string; heading?: string; text: string }[], q:
 }
 
 /** Answer every waiting ask file once. Returns how many were answered. */
-export async function processMailbox(lg: LifeGraph): Promise<number> {
+export async function processMailbox(lg: LifeGraph, settleMs = 800): Promise<number> {
   const dir = lg.vault.resolve(MAILBOX);
   if (!existsSync(dir)) return 0;
   let n = 0;
@@ -74,13 +75,19 @@ export async function processMailbox(lg: LifeGraph): Promise<number> {
     const askPath = path.join(dir, f);
     let ask: string;
     try {
-      ask = await fs.readFile(askPath, "utf8");
+      const st = await fs.stat(askPath);
+      // Still being written (by the app or by iCloud)? Leave it for the next pass.
+      if (settleMs > 0 && Date.now() - st.mtimeMs < settleMs) continue;
+      ask = st.size > MAX_ASK_BYTES ? "" : await fs.readFile(askPath, "utf8");
     } catch {
       continue;
     }
-    const reply = await answer(lg, ask).catch((e) => `The door could not answer: ${e instanceof Error ? e.message : e}`);
+    const reply = !ask.trim()
+      ? `The ask file was empty or too large (limit ${MAX_ASK_BYTES / 1024} KB). Write a short question or command.`
+      : await answer(lg, ask).catch((e) => `The door could not answer: ${e instanceof Error ? e.message : e}`);
     const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
-    await lg.vault.write(`${MAILBOX}/reply${m[1]}.md`, `# Reply from LifeGraph (${stamp})\n\nYou asked:\n\n> ${ask.trim().split("\n").join("\n> ")}\n\n${reply}\n`);
+    const quoted = ask.trim() ? `You asked:\n\n> ${ask.trim().split("\n").join("\n> ")}\n\n` : "";
+    await lg.vault.write(`${MAILBOX}/reply${m[1]}.md`, `# Reply from LifeGraph (${stamp})\n\n${quoted}${reply}\n`);
     await fs.unlink(askPath).catch(() => undefined);
     n++;
   }

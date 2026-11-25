@@ -20,7 +20,9 @@ AGENT="$HOME/Library/LaunchAgents/com.lifegraph.mailbox.plist"
 MOVE_TO_ICLOUD=0
 for a in "$@"; do [ "$a" = "--icloud" ] && MOVE_TO_ICLOUD=1; done
 
-say() { printf '\033[1m%s\033[0m\n' "$*"; }
+say() { printf '\033[1m%s\033[0m\n' "$*"; STEP="$*"; }
+STEP="starting"
+trap 'echo; echo "Install stopped during: $STEP"; echo "Your notes were not changed. Fix the error above and run the installer again; it is safe to re-run."' ERR
 
 [ "$(uname)" = "Darwin" ] || { echo "This installer is for macOS."; exit 1; }
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
@@ -28,6 +30,10 @@ if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.spli
   exit 1
 fi
 NODE="$(command -v node)"
+command -v npm >/dev/null 2>&1 || { echo "npm is missing (it normally comes with Node.js). Reinstall Node.js from https://nodejs.org."; exit 1; }
+if [ -e "$LINK" ] && [ ! -d "$LINK" ]; then
+  echo "$LINK exists but is not a folder. Rename it, then run this again."; exit 1
+fi
 
 say "1/4 Installing the door"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
@@ -100,6 +106,10 @@ PLIST
 launchctl bootout "gui/$(id -u)/com.lifegraph.mailbox" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$AGENT"
 echo "  Running. Log: ~/Library/Logs/LifeGraph/mailbox.log"
+
+echo
+say "Checking everything works"
+"$LG" doctor --vault "$LINK" | sed 's/^/  /' || true
 
 echo
 say "Done."

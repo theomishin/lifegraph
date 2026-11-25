@@ -21,6 +21,7 @@ Usage:
   lifegraph unlock <note>     Unlock it again
   lifegraph card              Print a short identity card to paste into apps with no connection
   lifegraph status            Show the folder, inbox, open handoffs and locked notes
+  lifegraph doctor            Check that everything works, and say how to fix what doesn't
 
 Options:
   --vault <folder>   LifeGraph folder (default: $LIFEGRAPH_DIR or ~/LifeGraph)
@@ -119,10 +120,14 @@ async function setLock(ref: string | undefined, locked: boolean) {
   const lg = new LifeGraph(vault);
   const note = await lg.vault.find(ref);
   if (!note) throw new Error(`No note named "${ref}".`);
-  let raw = setFrontmatter(note.raw, "locked", locked ? "true" : "false");
-  if (!locked) raw = raw.replace(/^privacy:\s*private\s*$/m, "privacy: personal");
-  await lg.vault.write(note.rel, raw);
-  console.log(`${locked ? "Locked" : "Unlocked"} ${note.rel}.`);
+  await lg.vault.withLock(async () => {
+    const fresh = await lg.vault.read(note.rel);
+    let raw = setFrontmatter(fresh.raw, "locked", locked ? "true" : "false");
+    if (!locked) raw = raw.replace(/^privacy:\s*private\s*$/m, "privacy: personal");
+    await lg.vault.write(note.rel, raw);
+  });
+  const hub = note.rel.split("/").length === 2 && note.rel.split("/")[1] === `${note.rel.split("/")[0]}.md`;
+  console.log(`${locked ? "Locked" : "Unlocked"} ${note.rel}${hub ? ` and everything in ${note.rel.split("/")[0]}/` : ""}.`);
 }
 
 async function status() {
@@ -137,11 +142,128 @@ async function status() {
   for (const c of cards) console.log(`  handoff: ${c.name}: ${c.goal}`);
 }
 
+async function doctor(): Promise<boolean> {
+  let ok = true;
+  const pass = (m: string) => console.log(`  ✓ ${m}`);
+  const fail = (m: string, fix: string) => {
+    ok = false;
+    console.log(`  ✗ ${m}\n      Fix: ${fix}`);
+  };
+  const warn = (m: string, fix: string) => console.log(`  ! ${m}\n      ${fix}`);
+  console.log("LifeGraph doctor\n");
+
+  const major = Number(process.versions.node.split(".")[0]);
+  if (major >= 20) pass(`Node.js ${process.versions.node}`);
+  else fail(`Node.js ${process.versions.node} is too old`, "install Node.js 20 or newer from https://nodejs.org, then run the installer again.");
+
+  if (!existsSync(vault)) {
+    fail(`No LifeGraph folder at ${vault}`, "run the installer again, or: lifegraph init");
+    return false;
+  }
+  const lg = new LifeGraph(vault);
+  const real = lg.vault.root;
+  pass(`Folder: ${vault}${real !== vault ? ` -> ${real}` : ""}${/Mobile Documents/.test(real) ? " (iCloud Drive)" : ""}`);
+
+  if (!existsSync(path.join(real, "index.md"))) fail("index.md is missing", "copy index.md from ~/.lifegraph-app/src/template/ into your LifeGraph folder.");
+  else if (!(await lg.rules())) warn("index.md has no \"## Rules for ...\" section", "AIs will use the door's default rules. See template/index.md for the section to add.");
+  else pass("index.md with rules for AIs");
+
+  // iCloud "Optimize Mac Storage" can leave notes as placeholders the door can't read.
+  const placeholders: string[] = [];
+  const walk = async (dir: string) => {
+    for (const e of await fs.readdir(dir, { withFileTypes: true })) {
+      if (e.isDirectory() && !e.name.startsWith(".")) await walk(path.join(dir, e.name));
+      else if (e.name.startsWith(".") && e.name.endsWith(".icloud")) placeholders.push(path.relative(real, path.join(dir, e.name)));
+    }
+  };
+  await walk(real);
+  if (placeholders.length)
+    fail(`${placeholders.length} note(s) are in iCloud but not downloaded to this Mac, so AIs can't read them`, "in Finder, right-click the LifeGraph folder in iCloud Drive and choose Keep Downloaded.");
+  else pass("All notes are on this Mac");
+
+  try {
+    await lg.vault.withLock(async () => {
+      await lg.writeState("doctor.json", { at: new Date().toISOString() });
+    });
+    pass("The door can write to the folder");
+  } catch (e) {
+    fail(`The door can't write to the folder: ${e instanceof Error ? e.message : e}`, "check the folder's permissions in Finder (Get Info, Sharing & Permissions).");
+  }
+
+  const notes = await lg.vault.list();
+  pass(`${notes.length} notes, ${notes.filter((n) => n.locked).length} locked, ${(await lg.inboxLines()).length} inbox line(s)`);
+
+  // App connections
+  const home = os.homedir();
+  const configs = [
+    ["Claude Desktop", path.join(home, "Library/Application Support/Claude/claude_desktop_config.json")],
+    ["Cursor", path.join(home, ".cursor/mcp.json")],
+    ["Gemini CLI", path.join(home, ".gemini/settings.json")],
+    ["LM Studio", path.join(home, ".lmstudio/mcp.json")],
+    ["Codex", path.join(home, ".codex/config.toml")],
+  ];
+  let connected = 0;
+  for (const [app, file] of configs) {
+    if (!existsSync(file)) continue;
+    const raw = await fs.readFile(file, "utf8");
+    if (!/lifegraph/.test(raw)) {
+      warn(`${app} is installed but not connected`, "run: lifegraph connect");
+      continue;
+    }
+    const paths = [...raw.matchAll(/"(\/[^"]*cli\.js)"/g)].map((m) => m[1]);
+    if (paths.some((p) => !existsSync(p))) fail(`${app} points at a door that no longer exists`, "run: lifegraph connect");
+    else {
+      pass(`${app} connected`);
+      connected++;
+    }
+  }
+  if (!connected) warn("No AI apps connected yet", "install Claude Desktop, Codex or Cursor, then run: lifegraph connect");
+
+  // Mailbox: a real round trip through the background agent.
+  if (process.platform === "darwin") {
+    let running = false;
+    try {
+      running = /state = running/.test(execFileSync("launchctl", ["print", `gui/${process.getuid?.()}/com.lifegraph.mailbox`], { encoding: "utf8" }));
+    } catch {
+      /* not loaded */
+    }
+    if (!running) fail("The mailbox isn't running in the background", "run the installer again; details in ~/Library/Logs/LifeGraph/mailbox.log");
+    else {
+      const ask = path.join(real, "mailbox", "ask-doctor.md");
+      const reply = path.join(real, "mailbox", "reply-doctor.md");
+      await fs.mkdir(path.dirname(ask), { recursive: true });
+      await fs.rm(reply, { force: true });
+      await fs.writeFile(ask, "from: doctor\ninbox\n");
+      let answered = false;
+      for (let i = 0; i < 20 && !answered; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        answered = existsSync(reply);
+      }
+      await fs.rm(ask, { force: true });
+      await fs.rm(reply, { force: true });
+      if (answered) pass("Mailbox answered a test question");
+      else
+        fail(
+          "The mailbox is running but didn't answer within 10 seconds",
+          "macOS may be blocking it from your iCloud folder. Open ~/Library/Logs/LifeGraph/mailbox.log; if it says 'Operation not permitted', give Node Full Disk Access in System Settings > Privacy & Security, then run the installer again.",
+        );
+    }
+  }
+
+  console.log(ok ? "\nEverything looks good." : "\nSome things need fixing (see above).");
+  return ok;
+}
+
 async function main() {
   const cmd = positional[0];
   if (cmd === "help" || process.argv.includes("--help") || process.argv.includes("-h")) return console.log(HELP);
   if (cmd === "version" || process.argv.includes("--version")) return console.log(VERSION);
   if (cmd === "init") return init(path.resolve(expand(positional[1] ?? vault)));
+  if (cmd === "doctor" && !existsSync(vault)) {
+    await doctor();
+    process.exitCode = 1;
+    return;
+  }
   if (!existsSync(vault)) {
     // stdout is the MCP channel when an app runs us, so errors go to stderr
     console.error(`No LifeGraph folder at ${vault}. Create one with: lifegraph init`);
@@ -151,6 +273,10 @@ async function main() {
   if (cmd === "lock" || cmd === "unlock") return setLock(positional[1], cmd === "lock");
   if (cmd === "card") return console.log(await new LifeGraph(vault).card());
   if (cmd === "status") return status();
+  if (cmd === "doctor") {
+    if (!(await doctor())) process.exitCode = 1;
+    return;
+  }
   if (cmd === "mailbox") {
     const lg = new LifeGraph(vault);
     await fs.mkdir(lg.vault.resolve("mailbox"), { recursive: true });

@@ -31,7 +31,7 @@ locked: true               # optional: the door never shows, searches or edits t
 ---
 ```
 
-`privacy: private`, from v0.1, is read as `locked: true`.
+`privacy: private`, from v0.1, is read as `locked: true`. A locked hub (`Money/Money.md`) locks every note in its folder.
 
 ## Lines
 
